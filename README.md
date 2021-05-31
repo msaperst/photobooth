@@ -1,6 +1,12 @@
 # FATMAX PHOTOBOOTH
 
 ## Test
+Unit Tests and code coverage
+> python -m unittest main_test.py
+> 
+> coverage report
+> 
+> coverage html
 
 ## Install
 This is designed to run on a raspberry pi. On a basic pi OS, you'll need to do the following:
