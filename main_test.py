@@ -54,4 +54,5 @@ class MainTest(unittest.TestCase):
         self.assertTrue(os.access(os.path.join(imageStore, 'prints'), os.X_OK | os.W_OK))
 
 
-unittest.main()
+if __name__ == '__main__':
+    unittest.main()
