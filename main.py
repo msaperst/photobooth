@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # declare our imports
 import os
+from os.path import exists
 import shutil
 import sys
 import cups
@@ -9,8 +10,7 @@ import cups
 # ###photo information
 numberOfPhotos = 3
 photoExtension = "jpg"
-weddingLogo = 1
-logoLocation = "photobooth-Stripchauted.jpg"
+logoLocation = "logo.jpg"
 textColor = "white"
 textBackground = "black"
 # ###strip layout
@@ -33,10 +33,13 @@ printDrive = "/media/max/NIKON\ D700"
 
 
 def check_photos(photos_across=photosAcross, photos_down=photosDown, number_of_photos=numberOfPhotos,
-                 wedding_logo=weddingLogo):
-    if photos_across * photos_down != number_of_photos + wedding_logo:
+                 logo_location=logoLocation):
+    if photos_across * photos_down != number_of_photos + (0 if logo_location is None else 1):
         raise ValueError(
             'Your layout does not workout. Number of photos is incorrect. Please verify your strip properties!')
+    if logo_location is not None and not exists(logo_location):
+        raise ValueError(
+            'The provided logo does not exist. Please verify your strip properties!')
 
 
 def check_user(user):

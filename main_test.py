@@ -21,15 +21,28 @@ class MainTest(unittest.TestCase):
         clean_up()
 
     def test_valid_default_alignment(self):
+        f = open('logo.jpg', 'w')
+        f.close()
         check_photos()
         self.assertTrue(True)
+        os.remove('logo.jpg')
 
     def test_valid_alignment(self):
-        check_photos(3, 3, 8, 1)
+        f = open('somePhoto.jpg', 'w')
+        f.close()
+        check_photos(3, 3, 8, 'somePhoto.jpg')
+        self.assertTrue(True)
+        os.remove('somePhoto.jpg')
+
+    def test_valid_alignment_bad_logo(self):
+        self.assertRaises(ValueError, check_photos, 3, 3, 8, 'somePhoto.jpg')
+
+    def test_valid_alignment_no_logo(self):
+        check_photos(3, 3, 9, None)
         self.assertTrue(True)
 
     def test_invalid_alignment(self):
-        self.assertRaises(ValueError, check_photos, 3, 3, 9, 1)
+        self.assertRaises(ValueError, check_photos, 3, 3, 9, 'somePhoto.jpg')
 
     def test_valid_user(self):
         check_user('root')
