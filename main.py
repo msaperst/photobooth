@@ -19,8 +19,7 @@ photosDown = 4
 # ###images resized to
 imageHeight = 600
 imageWidth = 900
-watermark = "false"
-watermarkText = "Privia Health"
+watermark = None
 # ###spacing
 spacingColor = "white"
 imageSpacing = 20
@@ -58,6 +57,10 @@ def create_folders():
         os.makedirs(os.path.join(imageStore, 'prints'))
 
 
+def ready_to_process():
+    return len(os.listdir(imageQueue)) >= 3
+
+
 if __name__ == "__main__":
     import time, getpass, datetime
 
@@ -66,6 +69,12 @@ if __name__ == "__main__":
     check_user(getpass.getuser())  # sanity check for correct user
     create_folders()  # ensure required folders exist
 
+    # need a loop that just runs forever, and when ready_to_process we do things, then return to the loop
+    while True:
+        if ready_to_process():
+            print('processing!!!')
+        print('waiting for photos!!!')
+        time.sleep(5)
 
     # imageSet = sum(os.path.isdir(os.path.join(imageStore, f)) for f in os.listdir(imageStore))
     # batchSet = sum(os.path.isdir(os.path.join(imageBackup, f)) for f in os.listdir(imageBackup)) + 1
@@ -91,7 +100,7 @@ if __name__ == "__main__":
     #     print "Resizing Image " + filename
     #     newSize = str(imageWidth) + "x" + str(imageHeight)
     #     os.system("convert -sample " + newSize + " " + thisFile + " " + thisFile)
-    #     if watermark == "true":  # if we need to add our watermark
+    #     if watermark is not None:  # if we need to add our watermark
     #         print "    Adding Watermark"
     #         newImageHeight = os.system("identify -format \"%h\" " + imageQueue + "/image" + str(i) + ".jpg ")
     #         newImageHeight.rstrip("\n\r")
@@ -108,7 +117,7 @@ if __name__ == "__main__":
     #             tempCorner3) + " 2,2' " + thisFile + " " + imageQueue + "/image" + str(i) + ".jpg")
     #         os.system("convert -font Helvetica -fill " + textColor + " -pointsize 10 -draw 'text " + str(
     #             textStartWidth) + "," + str(
-    #             textStartHeight) + " \"" + watermarkText + "\"' " + thisFile + " " + thisFile)
+    #             textStartHeight) + " \"" + watermark + "\"' " + thisFile + " " + thisFile)
     #     counter += 1
     #     if counter % numberOfPhotos == 0:  # build our strip
     #         print "Building the Strip"

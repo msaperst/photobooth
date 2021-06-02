@@ -66,6 +66,52 @@ class MainTest(unittest.TestCase):
         self.assertTrue(os.access(imageBackup, os.X_OK | os.W_OK))
         self.assertTrue(os.access(os.path.join(imageStore, 'prints'), os.X_OK | os.W_OK))
 
+    def test_not_enough_to_go_none(self):
+        create_folders()
+        self.assertFalse(ready_to_process())
+
+    def test_not_enough_to_go_two(self):
+        create_folders()
+        f = open(os.path.join(imageQueue, 'photo1.jpg'), 'w')
+        f.close()
+        f = open(os.path.join(imageQueue, 'photo2.jpg'), 'w')
+        f.close()
+        self.assertFalse(ready_to_process())
+        os.remove(os.path.join(imageQueue, 'photo1.jpg'))
+        os.remove(os.path.join(imageQueue, 'photo2.jpg'))
+
+    def test_not_enough_to_go_three(self):
+        create_folders()
+        f = open(os.path.join(imageQueue, 'photo1.jpg'), 'w')
+        f.close()
+        f = open(os.path.join(imageQueue, 'photo2.jpg'), 'w')
+        f.close()
+        f = open(os.path.join(imageQueue, 'photo3.jpg'), 'w')
+        f.close()
+        self.assertTrue(ready_to_process())
+        os.remove(os.path.join(imageQueue, 'photo1.jpg'))
+        os.remove(os.path.join(imageQueue, 'photo2.jpg'))
+        os.remove(os.path.join(imageQueue, 'photo3.jpg'))
+
+    def test_not_enough_to_go_five(self):
+        create_folders()
+        f = open(os.path.join(imageQueue, 'photo1.jpg'), 'w')
+        f.close()
+        f = open(os.path.join(imageQueue, 'photo2.jpg'), 'w')
+        f.close()
+        f = open(os.path.join(imageQueue, 'photo3.jpg'), 'w')
+        f.close()
+        f = open(os.path.join(imageQueue, 'photo4.jpg'), 'w')
+        f.close()
+        f = open(os.path.join(imageQueue, 'photo5.jpg'), 'w')
+        f.close()
+        self.assertTrue(ready_to_process())
+        os.remove(os.path.join(imageQueue, 'photo1.jpg'))
+        os.remove(os.path.join(imageQueue, 'photo2.jpg'))
+        os.remove(os.path.join(imageQueue, 'photo3.jpg'))
+        os.remove(os.path.join(imageQueue, 'photo4.jpg'))
+        os.remove(os.path.join(imageQueue, 'photo5.jpg'))
+
 
 if __name__ == '__main__':
     unittest.main()
