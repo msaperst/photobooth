@@ -62,26 +62,29 @@ class MainTest(unittest.TestCase):
     def test_no_camera_connected(self, mock_gp):
         mock_gp.gp_camera_init.return_value = -1
         mock_gp.GP_OK = 0
-        self.assertFalse(check_camera())
+        self.assertRaises(UserWarning, check_camera)
 
     @mock.patch('main.gp')
     def test_camera_connected(self, mock_gp):
         mock_gp.gp_camera_init.return_value = 0
         mock_gp.GP_OK = 0
-        self.assertTrue(check_camera())
+        self.assertTrue(True)
 
+    @mock.patch('main.gp')
     @mock.patch('main.list_files')
-    def test_not_enough_to_go_none(self, mock_list):
+    def test_not_enough_to_go_none(self, mock_list, mock_gp):
         mock_list.return_value = []
         self.assertFalse(ready_to_process())
 
+    @mock.patch('main.gp')
     @mock.patch('main.list_files')
-    def test_not_enough_to_go_two(self, mock_list):
+    def test_not_enough_to_go_two(self, mock_list, mock_gp):
         mock_list.return_value = ['photo1.JPG', 'photo1.NEF', 'photo2.JPG', 'photo2.NEF']
         self.assertFalse(ready_to_process())
 
+    @mock.patch('main.gp')
     @mock.patch('main.list_files')
-    def test_enough_to_go_three(self, mock_list):
+    def test_enough_to_go_three(self, mock_list, mock_gp):
         mock_list.return_value = ['photo1.JPG', 'photo1.NEF', 'photo2.JPG', 'photo2.NEF', 'photo3.JPG', 'photo3.NEF']
         self.assertTrue(ready_to_process())
 

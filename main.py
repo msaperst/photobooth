@@ -41,7 +41,7 @@ def check_photos(photos_across=photosAcross, photos_down=photosDown, number_of_p
 
 def check_user(user):
     if user != "root":
-        raise UserWarning('This program must be run as the root user')
+        raise UserWarning(f'This program must be run as the root user. You are running as {user}')
 
 
 def create_folders():
@@ -54,7 +54,7 @@ def check_camera():
     camera = gp.check_result(gp.gp_camera_new())
     error = gp.gp_camera_init(camera)
     if error < gp.GP_OK:
-        raise UserWarning('No camera has been detected')
+        raise UserWarning(f'No camera has been detected. Error {error} received')
 
 
 def check_printer():
@@ -66,7 +66,7 @@ def check_printer():
             is_selphy = True
             break
     if not is_selphy:
-        raise UserWarning('No printer has been detected')
+        raise UserWarning(f'No selphy printer has been detected. Only saw printers {printers}')
 
 
 def list_files(path='/'):
