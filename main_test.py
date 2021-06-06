@@ -1,5 +1,7 @@
 import shutil
 import unittest
+
+import cups
 import mock
 
 from main import *
@@ -68,7 +70,24 @@ class MainTest(unittest.TestCase):
     def test_camera_connected(self, mock_gp):
         mock_gp.gp_camera_init.return_value = 0
         mock_gp.GP_OK = 0
+        check_camera()
         self.assertTrue(True)
+
+    @mock.patch.object(cups, 'Connection')
+    def test_no_printer_connected(self, mock_cups):
+        mock_cups.getPrinters.return_value = []
+        self.assertRaises(UserWarning, check_printer)
+
+    @mock.patch.object(cups, 'Connection')
+    def test_bad_printer_connected(self, mock_cups):
+        mock_cups.getPrinters.return_value = ['123']
+        self.assertRaises(UserWarning, check_printer)
+
+    # # @mock.patch.object(cups, 'Connection')
+    # def test_printer_connected(self):
+    #     with mock.patch(cups.Connection.getPrinters, mock.MagicMock(return_value=[123])):
+    #         check_printer()
+    #         self.assertTrue(True)
 
     @mock.patch('main.gp')
     @mock.patch('main.list_files')

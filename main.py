@@ -32,16 +32,14 @@ camera = None
 def check_photos(photos_across=photosAcross, photos_down=photosDown, number_of_photos=numberOfPhotos,
                  logo_location=logoLocation):
     if photos_across * photos_down != number_of_photos + (0 if logo_location is None else 1):
+        os.system('espeak "Your layout does not workout. '
+                  'Number of photos is incorrect. Please verify your strip properties!" 2>/dev/null')
         raise ValueError(
             'Your layout does not workout. Number of photos is incorrect. Please verify your strip properties!')
     if logo_location is not None and not exists(logo_location):
+        os.system('espeak "The provided logo does not exist. Please verify your strip properties!" 2>/dev/null')
         raise ValueError(
             'The provided logo does not exist. Please verify your strip properties!')
-
-
-def check_user(user):
-    if user != "root":
-        raise UserWarning(f'This program must be run as the root user. You are running as {user}')
 
 
 def create_folders():
@@ -49,11 +47,18 @@ def create_folders():
         os.makedirs(imageStore)
 
 
+def check_user(user):
+    if user != "root":
+        os.system(f'espeak "This program must be run as the root user. You are running as {user}" 2>/dev/null')
+        raise UserWarning(f'This program must be run as the root user. You are running as {user}')
+
+
 def check_camera():
     global camera
     camera = gp.check_result(gp.gp_camera_new())
     error = gp.gp_camera_init(camera)
     if error < gp.GP_OK:
+        os.system(f'espeak "No camera has been detected. Error {error} received" 2>/dev/null')
         raise UserWarning(f'No camera has been detected. Error {error} received')
 
 
@@ -66,6 +71,7 @@ def check_printer():
             is_selphy = True
             break
     if not is_selphy:
+        os.system(f'espeak "No selphy printer has been detected. Only saw printers {printers}" 2>/dev/null')
         raise UserWarning(f'No selphy printer has been detected. Only saw printers {printers}')
 
 
@@ -123,6 +129,7 @@ def make_print(directory):
         image.resize(imageWidth, imageHeight)
         image.save(filename=os.path.join(directory, file))
         if watermark is not None:
+            os.system('espeak "This functionality is not implemented yet" 2>/dev/null')
             raise ValueError('This functionality is not implemented yet')
             # TODO DO SOMETHING
     # build our photo strip
@@ -134,7 +141,8 @@ def make_print(directory):
         image_string += " " + os.path.join(directory, filename)
     if logoLocation is not None:
         image_string += " " + logoLocation
-    tile_command = 'montage -tile ' + tile + ' -geometry ' + new_size + '>+' + str(imageSpacing) + '+' + str(imageSpacing) + ' -background ' + spacingColor + ' ' + image_string + ' ' + strip
+    tile_command = 'montage -tile ' + tile + ' -geometry ' + new_size + '>+' + str(imageSpacing) + '+' + str(
+        imageSpacing) + ' -background ' + spacingColor + ' ' + image_string + ' ' + strip
     os.system(tile_command)  # NOTE - wand/pgmagick doesn't support montage, so building use system process calls
     # create our printable image
     strip_print = os.path.join(directory, "Print.jpg")
@@ -146,7 +154,7 @@ def make_print(directory):
               " " + strip_print + " " + strip_print + " " + strip_print
               )  # NOTE - wand/pgmagick doesn't support montage, so building use system process calls
     image = Image(filename=strip_print)
-    image.border(spacingColor, 90, 90)
+    image.border(spacingColor, 20, 20)
     image.save(filename=strip_print)
     return strip_print
 
@@ -160,7 +168,7 @@ if __name__ == "__main__":
     import getpass
 
     check_photos()  # sanity check for correct setup
-    # check_user(getpass.getuser())  # sanity check for correct user
+    check_user(getpass.getuser())  # sanity check for correct user
     check_camera()  # sanity check for camera attached
     check_printer()
     create_folders()  # ensure required folders exist

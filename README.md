@@ -5,7 +5,7 @@ and the Canon Selphy ES30 (install and code changes are needed to handle alterna
 
 ## Test
 Unit Tests and code coverage
-> python -m unittest main_test.py
+> coverage run -m unittest main_test.py
 > 
 > coverage report
 > 
@@ -20,13 +20,35 @@ This is designed to run on a raspberry pi. On a basic pi OS, you'll need to do t
 2. Install python3.8
 > sudo apt install software-properties-common
 > 
-> sudo add-apt-repository ppa:deadsnakes/ppa
+> sudo apt-get install -y build-essential tk-dev libncurses5-dev libncursesw5-dev libreadline6-dev libdb5.3-dev libgdbm-dev libsqlite3-dev libssl-dev libbz2-dev libexpat1-dev liblzma-dev zlib1g-dev libffi-dev
 > 
-> sudo apt update
+> wget https://www.python.org/ftp/python/3.8.0/Python-3.8.0.tar.xz
+>
+> tar xf Python-3.8.0.tar.xz
+>
+> cd Python-3.8.0
+>
+> ./configure --prefix=/usr/local/opt/python-3.8.0
 > 
-> sudo apt upgrade
+> make -j 4
 > 
-> sudo apt install python3.8
+> sudo make altinstall
+> 
+> cd ..
+>
+> sudo rm -r Python-3.8.0
+>
+> rm Python-3.8.0.tar.xz
+>
+> echo "alias python=/usr/local/opt/python-3.8.0/bin/python3.8" >> ~/.bashrc
+> 
+> sudo echo "alias python=/usr/local/opt/python-3.8.0/bin/python3.8" >> /root/.bashrc
+>
+> . ~/.bashrc
+> 
+> python --version
+> 
+> sudo chown -R max.max /usr/local/opt/python-3.8.0/
 3. Install gphoto2
 > sudo apt install gphoto2
 > 
@@ -34,22 +56,32 @@ This is designed to run on a raspberry pi. On a basic pi OS, you'll need to do t
 >
 > sudo apt install libgphoto2-6
 4. Install cups and gutenprint
-> sudo apt install printer-driver-gutenprint=5.3.3-4
-> 
 > sudo apt install cups
 > 
 > sudo apt install libcups2-dev
-5. Install printer
+> 
+> sudo apt install printer-driver-gutenprint=5.3.1-7
+5. Install imagemagick
+> sudo apt-get install imagemagick
+6. Install printer
 > lpinfo -v
 > 
-> lpadmin -p "Selphy" -v {device-uri} -E -m gutenprint.5.3://canon-es30/expert
-6. Copy over script
-> TBD
-7. Setup to run on start
+> lpadmin -p "Selphy" -v [device-uri] -E -m gutenprint.5.3://canon-es30/expert
+7. Copy over script
+> scp main.py [raspberry-ip]:~/
+> 
+> scp logo.jpg [raspberry-ip]:~/
+> 
+> scp requirements.txt [raspberry-ip]:~/
+8. Setup modules
+> python -m pip install --upgrade pip
+> 
+> python -m pip install -r requirements.txt
+9. Setup to run on start
 > TBD
 
 ## Execute Manually
-> python3.8 main.py
+> python main.py
 
 ## Usage
 Note that these steps need to be run in order, or the application won't find the camera or printer
