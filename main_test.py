@@ -1,15 +1,13 @@
+import shutil
 import unittest
+import mock
 
 from main import *
 
 
 def clean_up():
-    if os.path.exists(imageQueue):
-        shutil.rmtree(imageQueue)
     if os.path.exists(imageStore):
         shutil.rmtree(imageStore)
-    if os.path.exists(imageBackup):
-        shutil.rmtree(imageBackup)
 
 
 class MainTest(unittest.TestCase):
@@ -28,21 +26,21 @@ class MainTest(unittest.TestCase):
         os.remove('logo.jpg')
 
     def test_valid_alignment(self):
-        f = open('somePhoto.jpg', 'w')
+        f = open('somePhoto.JPG', 'w')
         f.close()
-        check_photos(3, 3, 8, 'somePhoto.jpg')
+        check_photos(3, 3, 8, 'somePhoto.JPG')
         self.assertTrue(True)
-        os.remove('somePhoto.jpg')
+        os.remove('somePhoto.JPG')
 
     def test_valid_alignment_bad_logo(self):
-        self.assertRaises(ValueError, check_photos, 3, 3, 8, 'somePhoto.jpg')
+        self.assertRaises(ValueError, check_photos, 3, 3, 8, 'somePhoto.JPG')
 
     def test_valid_alignment_no_logo(self):
         check_photos(3, 3, 9, None)
         self.assertTrue(True)
 
     def test_invalid_alignment(self):
-        self.assertRaises(ValueError, check_photos, 3, 3, 9, 'somePhoto.jpg')
+        self.assertRaises(ValueError, check_photos, 3, 3, 9, 'somePhoto.JPG')
 
     def test_valid_user(self):
         check_user('root')
@@ -53,64 +51,39 @@ class MainTest(unittest.TestCase):
 
     def test_folders_do_not_exist(self):
         create_folders()
-        self.assertTrue(os.access(imageQueue, os.X_OK | os.W_OK))
         self.assertTrue(os.access(imageStore, os.X_OK | os.W_OK))
-        self.assertTrue(os.access(imageBackup, os.X_OK | os.W_OK))
-        self.assertTrue(os.access(os.path.join(imageStore, 'prints'), os.X_OK | os.W_OK))
 
     def test_folders_do_exist(self):
         create_folders()
         create_folders()
-        self.assertTrue(os.access(imageQueue, os.X_OK | os.W_OK))
         self.assertTrue(os.access(imageStore, os.X_OK | os.W_OK))
-        self.assertTrue(os.access(imageBackup, os.X_OK | os.W_OK))
-        self.assertTrue(os.access(os.path.join(imageStore, 'prints'), os.X_OK | os.W_OK))
 
-    def test_not_enough_to_go_none(self):
-        create_folders()
+    @mock.patch('main.gp')
+    def test_no_camera_connected(self, mock_gp):
+        mock_gp.gp_camera_init.return_value = -1
+        mock_gp.GP_OK = 0
+        self.assertFalse(check_camera())
+
+    @mock.patch('main.gp')
+    def test_camera_connected(self, mock_gp):
+        mock_gp.gp_camera_init.return_value = 0
+        mock_gp.GP_OK = 0
+        self.assertTrue(check_camera())
+
+    @mock.patch('main.list_files')
+    def test_not_enough_to_go_none(self, mock_list):
+        mock_list.return_value = []
         self.assertFalse(ready_to_process())
 
-    def test_not_enough_to_go_two(self):
-        create_folders()
-        f = open(os.path.join(imageQueue, 'photo1.jpg'), 'w')
-        f.close()
-        f = open(os.path.join(imageQueue, 'photo2.jpg'), 'w')
-        f.close()
+    @mock.patch('main.list_files')
+    def test_not_enough_to_go_two(self, mock_list):
+        mock_list.return_value = ['photo1.JPG', 'photo1.NEF', 'photo2.JPG', 'photo2.NEF']
         self.assertFalse(ready_to_process())
-        os.remove(os.path.join(imageQueue, 'photo1.jpg'))
-        os.remove(os.path.join(imageQueue, 'photo2.jpg'))
 
-    def test_not_enough_to_go_three(self):
-        create_folders()
-        f = open(os.path.join(imageQueue, 'photo1.jpg'), 'w')
-        f.close()
-        f = open(os.path.join(imageQueue, 'photo2.jpg'), 'w')
-        f.close()
-        f = open(os.path.join(imageQueue, 'photo3.jpg'), 'w')
-        f.close()
+    @mock.patch('main.list_files')
+    def test_enough_to_go_three(self, mock_list):
+        mock_list.return_value = ['photo1.JPG', 'photo1.NEF', 'photo2.JPG', 'photo2.NEF', 'photo3.JPG', 'photo3.NEF']
         self.assertTrue(ready_to_process())
-        os.remove(os.path.join(imageQueue, 'photo1.jpg'))
-        os.remove(os.path.join(imageQueue, 'photo2.jpg'))
-        os.remove(os.path.join(imageQueue, 'photo3.jpg'))
-
-    def test_not_enough_to_go_five(self):
-        create_folders()
-        f = open(os.path.join(imageQueue, 'photo1.jpg'), 'w')
-        f.close()
-        f = open(os.path.join(imageQueue, 'photo2.jpg'), 'w')
-        f.close()
-        f = open(os.path.join(imageQueue, 'photo3.jpg'), 'w')
-        f.close()
-        f = open(os.path.join(imageQueue, 'photo4.jpg'), 'w')
-        f.close()
-        f = open(os.path.join(imageQueue, 'photo5.jpg'), 'w')
-        f.close()
-        self.assertTrue(ready_to_process())
-        os.remove(os.path.join(imageQueue, 'photo1.jpg'))
-        os.remove(os.path.join(imageQueue, 'photo2.jpg'))
-        os.remove(os.path.join(imageQueue, 'photo3.jpg'))
-        os.remove(os.path.join(imageQueue, 'photo4.jpg'))
-        os.remove(os.path.join(imageQueue, 'photo5.jpg'))
 
 
 if __name__ == '__main__':

@@ -2,17 +2,17 @@
 # declare our imports
 import os
 from os.path import exists
-import shutil
-import sys
-import cups
+import gphoto2 as gp
+import time, cups
+from wand.image import Image
 
 # declare our global variables
 # ###photo information
 numberOfPhotos = 3
-photoExtension = "jpg"
-logoLocation = "logo.jpg"
-textColor = "white"
-textBackground = "black"
+photoExtension = 'jpg'
+logoLocation = 'logo.jpg'
+textColor = 'white'
+textBackground = 'black'
 # ###strip layout
 photosAcross = 1
 photosDown = 4
@@ -21,14 +21,12 @@ imageHeight = 600
 imageWidth = 900
 watermark = None
 # ###spacing
-spacingColor = "white"
+spacingColor = 'white'
 imageSpacing = 20
-# ###image locations being definate (relative)
-imageQueue = "./queuedImages"
-imageStore = "./storedImages"
-imageBackup = "./photoStore"
-storageDrive = "/media/max/NIKON\ D700/DCIM/171ND700"
-printDrive = "/media/max/NIKON\ D700"
+# ###image store location
+imageStore = './storedImages'
+# ###our camera object
+camera = None
 
 
 def check_photos(photos_across=photosAcross, photos_down=photosDown, number_of_photos=numberOfPhotos,
@@ -47,121 +45,133 @@ def check_user(user):
 
 
 def create_folders():
-    if not os.path.exists(imageQueue):
-        os.makedirs(imageQueue)
     if not os.path.exists(imageStore):
         os.makedirs(imageStore)
-    if not os.path.exists(imageBackup):
-        os.makedirs(imageBackup)
-    if not os.path.exists(os.path.join(imageStore, 'prints')):
-        os.makedirs(os.path.join(imageStore, 'prints'))
+
+
+def check_camera():
+    global camera
+    camera = gp.check_result(gp.gp_camera_new())
+    error = gp.gp_camera_init(camera)
+    if error < gp.GP_OK:
+        raise UserWarning('No camera has been detected')
+
+
+def check_printer():
+    conn = cups.Connection()
+    printers = conn.getPrinters()
+    is_selphy = False
+    for printer in printers:
+        if printer == "Selphy":
+            is_selphy = True
+            break
+    if not is_selphy:
+        raise UserWarning('No printer has been detected')
+
+
+def list_files(path='/'):
+    result = []
+    # get files
+    for name, value in gp.check_result(
+            gp.gp_camera_folder_list_files(camera, path)):
+        result.append(os.path.join(path, name))
+    # read folders
+    folders = []
+    for name, value in gp.check_result(
+            gp.gp_camera_folder_list_folders(camera, path)):
+        folders.append(name)
+    # recurse over subfolders
+    for name in folders:
+        result.extend(list_files(os.path.join(path, name)))
+    return result
 
 
 def ready_to_process():
-    return len(os.listdir(imageQueue)) >= 3
+    global camera
+    gp.check_result(gp.gp_camera_exit(camera))
+    camera = gp.check_result(gp.gp_camera_new())
+    gp.check_result(gp.gp_camera_init(camera))
+    files = list_files('/')
+    return len(files) >= 6  # we're using 6, as a NEF and JPG are both created
+
+
+def get_images():
+    count = len(os.listdir(imageStore))
+    destination_dir = os.path.join(imageStore, f'batch{count}')
+    os.makedirs(destination_dir)
+    files = list_files()
+    for x in range(0, 6):
+        # get our file information
+        path = files[x]
+        folder, name = os.path.split(path)
+        destination = os.path.join(destination_dir, name)
+        # copy the file over
+        camera_file = gp.check_result(gp.gp_camera_file_get(
+            camera, folder, name, gp.GP_FILE_TYPE_NORMAL))
+        gp.check_result(gp.gp_file_save(camera_file, destination))
+        # remove the file
+        gp.gp_camera_file_delete(camera, folder, name)
+    return destination_dir
+
+
+def make_print(directory):
+    # get each of our files
+    files = []
+    files += [each for each in os.listdir(directory) if each.endswith('.JPG')]
+    for file in files:
+        image = Image(filename=os.path.join(directory, file))
+        image.resize(imageWidth, imageHeight)
+        image.save(filename=os.path.join(directory, file))
+        if watermark is not None:
+            raise ValueError('This functionality is not implemented yet')
+            # TODO DO SOMETHING
+    # build our photo strip
+    tile = str(photosAcross) + "x" + str(photosDown)
+    image_string = ""
+    strip = os.path.join(directory, "Strip.jpg")
+    new_size = str(imageWidth) + "x" + str(imageHeight)
+    for filename in sorted(files):
+        image_string += " " + os.path.join(directory, filename)
+    if logoLocation is not None:
+        image_string += " " + logoLocation
+    tile_command = 'montage -tile ' + tile + ' -geometry ' + new_size + '>+' + str(imageSpacing) + '+' + str(imageSpacing) + ' -background ' + spacingColor + ' ' + image_string + ' ' + strip
+    os.system(tile_command)  # NOTE - wand/pgmagick doesn't support montage, so building use system process calls
+    # create our printable image
+    strip_print = os.path.join(directory, "Print.jpg")
+    image = Image(filename=strip)
+    image.rotate(90)
+    image.border(spacingColor, 20, 20)
+    image.save(filename=strip_print)
+    os.system("montage -tile 1x2 -border 0 -mode concatenate -background " + spacingColor +
+              " " + strip_print + " " + strip_print + " " + strip_print
+              )  # NOTE - wand/pgmagick doesn't support montage, so building use system process calls
+    image = Image(filename=strip_print)
+    image.border(spacingColor, 90, 90)
+    image.save(filename=strip_print)
+    return strip_print
+
+
+def print_it(file_to_print):
+    conn = cups.Connection()
+    conn.printFile("Selphy", file_to_print, file_to_print, {})
 
 
 if __name__ == "__main__":
-    import time, getpass, datetime
+    import getpass
 
-    imageSet = 0
     check_photos()  # sanity check for correct setup
-    check_user(getpass.getuser())  # sanity check for correct user
+    # check_user(getpass.getuser())  # sanity check for correct user
+    check_camera()  # sanity check for camera attached
+    check_printer()
     create_folders()  # ensure required folders exist
 
     # need a loop that just runs forever, and when ready_to_process we do things, then return to the loop
     while True:
         if ready_to_process():
             print('processing!!!')
-        print('waiting for photos!!!')
-        time.sleep(5)
-
-    # imageSet = sum(os.path.isdir(os.path.join(imageStore, f)) for f in os.listdir(imageStore))
-    # batchSet = sum(os.path.isdir(os.path.join(imageBackup, f)) for f in os.listdir(imageBackup)) + 1
-    #
-    # # copy and backup our photos
-    # print "Copying and backing up our photos"
-    # os.makedirs(os.path.join(imageBackup, "batch" + str(batchSet)))
-    # os.system("cp " + storageDrive + "/* " + imageBackup + "/batch" + str(batchSet) + "/")
-    # os.system("cp " + os.path.join(storageDrive, "*.JPG") + " \"" + os.path.join(imageQueue) + "/\"")
-    # os.system("cp " + os.path.join(storageDrive, "*.jpg") + " \"" + os.path.join(imageQueue) + "/\"")
-    # os.system("rm -rf " + os.path.join(storageDrive, "*"))
-    #
-    # # start processing our images
-    # counter = 0;
-    # workingFolder = "";
-    # for filename in sorted(os.listdir(imageQueue)):
-    #     if counter % numberOfPhotos == 0:
-    #         workingFolder = os.path.join(imageStore, "image" + str(imageSet + counter / numberOfPhotos))
-    #         os.makedirs(workingFolder)
-    #     print "Copying file " + filename
-    #     thisFile = os.path.join(workingFolder, filename)
-    #     shutil.copyfile(os.path.join(imageQueue, filename), thisFile)
-    #     print "Resizing Image " + filename
-    #     newSize = str(imageWidth) + "x" + str(imageHeight)
-    #     os.system("convert -sample " + newSize + " " + thisFile + " " + thisFile)
-    #     if watermark is not None:  # if we need to add our watermark
-    #         print "    Adding Watermark"
-    #         newImageHeight = os.system("identify -format \"%h\" " + imageQueue + "/image" + str(i) + ".jpg ")
-    #         newImageHeight.rstrip("\n\r")
-    #         newImageWidth = os.system("identify -format \"%w\" " + imageQueue + "/image" + str(i) + ".jpg ")
-    #         newImageWidth.rstrip("\n\r")
-    #         tempCorner0 = 5;
-    #         tempCorner1 = newImageHeight - 17;
-    #         tempCorner2 = newImageWidth - 5;
-    #         tempCorner3 = newImageHeight - 5;
-    #         textStartHeight = (tempCorner1 + tempCorner3) / 2 + 4;
-    #         textStartWidth = (tempCorner0 + tempCorner2) / 2 - 65;
-    #         os.system("convert -fill " + textBackground + " -draw 'rountRectangle " + str(tempCorner0) + "," + str(
-    #             tempCorner1) + " " + str(tempCorner2) + "," + str(
-    #             tempCorner3) + " 2,2' " + thisFile + " " + imageQueue + "/image" + str(i) + ".jpg")
-    #         os.system("convert -font Helvetica -fill " + textColor + " -pointsize 10 -draw 'text " + str(
-    #             textStartWidth) + "," + str(
-    #             textStartHeight) + " \"" + watermark + "\"' " + thisFile + " " + thisFile)
-    #     counter += 1
-    #     if counter % numberOfPhotos == 0:  # build our strip
-    #         print "Building the Strip"
-    #         tile = str(photosAcross) + "x" + str(photosDown)
-    #         imageString = ""
-    #         newFile = os.path.join(workingFolder, "Strip.jpg")
-    #         for filename in sorted(os.listdir(workingFolder)):
-    #             imageString += " " + os.path.join(workingFolder, filename)
-    #         if weddingLogo == 1:
-    #             imageString += " " + logoLocation
-    #         print "montage -tile " + tile + " -geometry " + newSize + "\>+" + str(imageSpacing) + "+" + str(
-    #             imageSpacing) + " -background " + spacingColor + " " + imageString + " " + newFile
-    #         os.system("montage -tile " + tile + " -geometry " + newSize + "\>+" + str(imageSpacing) + "+" + str(
-    #             imageSpacing) + " -background " + spacingColor + " " + imageString + " " + newFile)
-    #         os.chmod(newFile, 0777)
-    #         print "Created 'Strip.jpg' in " + workingFolder
-    #         # create our printable image
-    #         print "Starting Creation of Printable Image"
-    #         newImage = os.path.join(workingFolder, "Print" + str(imageSet + counter / numberOfPhotos - 1) + ".jpg")
-    #         os.system("convert " + newFile + " -rotate 90 " + newImage)
-    #         os.system(
-    #             "montage -tile 1x2 -border 0 -mode concatenate -background " + spacingColor + " " + newImage + " " + newImage + " " + newImage)
-    #         os.system("convert " + newImage + " -border 110x110 -bordercolor " + spacingColor + " " + newImage)
-    #         os.chmod(newImage, 0777)
-    #         os.system("cp " + newImage + " " + os.path.join(imageStore, "prints/"))
-    #         print "Created prinable image " + newImage
-    #
-    # # cleanup and prep for print
-    # os.system("sudo chmod -R 777 *")
-    # os.system("sudo rm -rf " + os.path.join(imageQueue, '*'))
-    # # check for our selphy printer
-    # conn = cups.Connection()
-    # printers = conn.getPrinters()
-    # isSelphy = False
-    # for printer in printers:
-    #     if printer == "Canon-ES30":
-    #         isSelphy = True
-    #         break
-    # if isSelphy:
-    #     for filename in os.listdir(os.path.join(imageStore, 'prints')):
-    #         print "Printing file " + os.path.join(imageStore, 'prints', filename)
-    #         conn.printFile("Canon-ES30", os.path.join(imageStore, 'prints', filename), "Image " + filename, {})
-    # else:
-    #     os.system("sudo rm -rf " + os.path.join(printDrive, '*'))
-    #     os.system("sudo cp " + os.path.join(imageStore, 'prints', '*') + " " + printDrive + "/")
-    # # cleanup when we're done
-    # os.system("sudo rm -rf " + os.path.join(imageStore, 'prints', "*"))
+            destination_directory = get_images()
+            print_file = make_print(destination_directory)
+            print_it(print_file)
+        else:
+            print('waiting for photos!!!')
+            time.sleep(5)
