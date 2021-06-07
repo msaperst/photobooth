@@ -78,7 +78,12 @@ This is designed to run on a raspberry pi. On a basic pi OS, you'll need to do t
 > 
 > python -m pip install -r requirements.txt
 9. Setup to run on start
-> TBD
+- Edit the `/etc/rc.local` file
+> sudo vim /etc/rc.local
+- Before the `exit 0` line add the below
+> \# Runs our photobooth program
+> 
+> sudo /usr/local/opt/python-3.8.0/bin/python3.8 /home/max/main.py &
 
 ## Execute Manually
 > python main.py

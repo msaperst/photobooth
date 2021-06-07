@@ -148,14 +148,11 @@ def make_print(directory):
     strip_print = os.path.join(directory, "Print.jpg")
     image = Image(filename=strip)
     image.rotate(90)
-    image.border(spacingColor, 20, 20)
+    image.border(spacingColor, 40, 40)
     image.save(filename=strip_print)
     os.system("montage -tile 1x2 -border 0 -mode concatenate -background " + spacingColor +
               " " + strip_print + " " + strip_print + " " + strip_print
               )  # NOTE - wand/pgmagick doesn't support montage, so building use system process calls
-    image = Image(filename=strip_print)
-    image.border(spacingColor, 20, 20)
-    image.save(filename=strip_print)
     return strip_print
 
 
