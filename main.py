@@ -47,7 +47,7 @@ def create_folders():
         os.makedirs(imageStore)
 
 
-def check_user(user):
+def check_user(user: str):
     if user != "root":
         os.system(f'espeak "This program must be run as the root user. You are running as {user}" 2>/dev/null')
         raise UserWarning(f'This program must be run as the root user. You are running as {user}')
@@ -101,11 +101,11 @@ def ready_to_process():
     return len(files) >= 6  # we're using 6, as a NEF and JPG are both created
 
 
-def get_images():
+def move_over_images():
     count = len(os.listdir(imageStore))
     destination_dir = os.path.join(imageStore, f'batch{count}')
     os.makedirs(destination_dir)
-    files = list_files()
+    files = sorted(list_files())
     for x in range(0, 6):
         # get our file information
         path = files[x]
@@ -123,7 +123,7 @@ def get_images():
 def make_print(directory):
     # get each of our files
     files = []
-    files += [each for each in os.listdir(directory) if each.endswith('.JPG')]
+    files += [each for each in os.listdir(directory) if each.lower().endswith('.jpg')]
     for file in files:
         image = Image(filename=os.path.join(directory, file))
         image.resize(imageWidth, imageHeight)
@@ -174,7 +174,7 @@ if __name__ == "__main__":
     while True:
         if ready_to_process():
             print('processing!!!')
-            destination_directory = get_images()
+            destination_directory = move_over_images()
             print_file = make_print(destination_directory)
             print_it(print_file)
         else:
