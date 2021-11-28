@@ -57,6 +57,11 @@ sudo apt-get install imagemagick
 lpinfo -v
 lpadmin -p "Selphy" -v [device-uri] -E -m gutenprint.5.3://canon-es30/expert
 ```
+   a. You might need to mess with [printer default options](https://www.cups.org/doc/options.html#OPTIONS). 
+   For the selphy, I needed to set borderless printing (still a problem), and photo quality
+   `lpoptions -p Selphy -o StpImageType=Photo`
+   `lpoptions -p Selphy -o StpiShrinkOutput=Expand`
+   `lpoptions -p Selphy -o StpBorderless=True`
 7. Copy over script
 ```shell
 scp main.py [raspberry-ip]:~/

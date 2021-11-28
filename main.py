@@ -47,7 +47,7 @@ def create_folders():
         os.makedirs(imageStore)
 
 
-def check_user(user: str):
+def check_user(user):
     if user != "root":
         os.system(f'espeak "This program must be run as the root user. You are running as {user}" 2>/dev/null')
         raise UserWarning(f'This program must be run as the root user. You are running as {user}')
@@ -141,14 +141,13 @@ def make_print(directory):
         image_string += " " + os.path.join(directory, filename)
     if logoLocation is not None:
         image_string += " " + logoLocation
-    tile_command = 'montage -tile ' + tile + ' -geometry ' + new_size + '>+' + str(imageSpacing) + '+' + str(
+    tile_command = 'montage -tile ' + tile + ' -geometry ' + new_size + '\\>+' + str(imageSpacing) + '+' + str(
         imageSpacing) + ' -background ' + spacingColor + ' ' + image_string + ' ' + strip
     os.system(tile_command)  # NOTE - wand/pgmagick doesn't support montage, so building use system process calls
     # create our printable image
     strip_print = os.path.join(directory, "Print.jpg")
     image = Image(filename=strip)
     image.rotate(90)
-    image.border(spacingColor, 40, 40)
     image.save(filename=strip_print)
     os.system("montage -tile 1x2 -border 0 -mode concatenate -background " + spacingColor +
               " " + strip_print + " " + strip_print + " " + strip_print
