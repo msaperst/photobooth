@@ -8,58 +8,10 @@
     <!-- Favicon -->
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
 
-    <style>
-        :root {
-            --brand-green: #9BCF9B;
-            --brand-green-dark: #6FAF8E;
-            --brand-purple: #6B5B95;
-            --brand-bg: #F6F8F7;
-            --brand-text: #2E2E2E;
-        }
-
-        body {
-            font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-            background-color: var(--brand-bg);
-            color: var(--brand-text);
-            text-align: center;
-            padding: 2rem;
-        }
-
-        img.logo {
-            max-width: 260px;
-            margin-bottom: 2rem;
-        }
-
-        #state {
-            font-size: 2.2rem;
-            font-weight: 600;
-            color: var(--brand-purple);
-            margin: 2rem 0;
-        }
-
-        button {
-            font-size: 1.6rem;
-            padding: 1rem 2.5rem;
-            border-radius: 10px;
-            border: none;
-            cursor: pointer;
-            background-color: var(--brand-green);
-            color: white;
-            box-shadow: 0 6px 0 var(--brand-green-dark);
-            transition: transform 0.1s ease, box-shadow 0.1s ease;
-        }
-
-        button:active {
-            transform: translateY(4px);
-            box-shadow: 0 2px 0 var(--brand-green-dark);
-        }
-
-        button:disabled {
-            background-color: #ccc;
-            box-shadow: none;
-            cursor: not-allowed;
-        }
-    </style>
+    <link
+            rel="stylesheet"
+            href="{{ url_for('static', filename='styles.css') }}"
+    >
 </head>
 <body>
 
@@ -71,16 +23,15 @@
 
 <div id="state">Loading…</div>
 
-<div style="margin-bottom: 1.5rem;">
-    <label for="printCount" style="font-size: 1.2rem;">
-        Number of prints:
-    </label>
-    <select id="printCount" style="font-size: 1.2rem; padding: 0.5rem;">
-        <option value="1">1</option>
-        <option value="2">2</option>
-        <option value="3">3</option>
-        <option value="4">4</option>
-    </select>
+<div class="strip-selector">
+    <p class="selector-label">How many photo strips?</p>
+
+    <div class="strip-options">
+        <button class="strip-option active" data-strips="2">2 Strips</button>
+        <button class="strip-option" data-strips="4">4 Strips</button>
+        <button class="strip-option" data-strips="6">6 Strips</button>
+        <button class="strip-option" data-strips="8">8 Strips</button>
+    </div>
 </div>
 
 <button id="startButton" onclick="startSession()">
@@ -89,6 +40,20 @@
 
 <script>
     let isBusy = false;
+    let selectedStrips = 2;
+
+    function updateStripSelection(button) {
+        document.querySelectorAll(".strip-option").forEach(btn => {
+            btn.classList.remove("active");
+        });
+
+        button.classList.add("active");
+        selectedStrips = parseInt(button.dataset.strips, 10);
+    }
+
+    document.querySelectorAll(".strip-option").forEach(button => {
+        button.addEventListener("click", () => updateStripSelection(button));
+    });
 
     async function fetchStatus() {
         const response = await fetch("/status");
@@ -98,12 +63,17 @@
 
         isBusy = data.busy;
         document.getElementById("startButton").disabled = isBusy;
+
+        document.querySelectorAll(".strip-option").forEach(btn => {
+            btn.disabled = isBusy;
+        });
     }
 
     async function startSession() {
         if (isBusy) return;
 
-        const printCount = document.getElementById("printCount").value;
+        // Each 4x6 print contains 2 strips
+        const printCount = selectedStrips / 2;
 
         const response = await fetch("/start-session", {
             method: "POST",
