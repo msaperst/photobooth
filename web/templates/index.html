@@ -2,32 +2,62 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Photobooth</title>
+    <title>Saperstone Studios Photobooth</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
     <!-- Favicon -->
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
 
     <style>
+        :root {
+            --brand-green: #9BCF9B;
+            --brand-green-dark: #6FAF8E;
+            --brand-purple: #6B5B95;
+            --brand-bg: #F6F8F7;
+            --brand-text: #2E2E2E;
+        }
+
         body {
-            font-family: sans-serif;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: var(--brand-bg);
+            color: var(--brand-text);
             text-align: center;
             padding: 2rem;
         }
 
         img.logo {
-            max-width: 250px;
-            margin-bottom: 1.5rem;
+            max-width: 260px;
+            margin-bottom: 2rem;
         }
 
         #state {
-            font-size: 2rem;
+            font-size: 2.2rem;
+            font-weight: 600;
+            color: var(--brand-purple);
             margin: 2rem 0;
         }
 
         button {
-            font-size: 1.5rem;
-            padding: 1rem 2rem;
+            font-size: 1.6rem;
+            padding: 1rem 2.5rem;
+            border-radius: 10px;
+            border: none;
+            cursor: pointer;
+            background-color: var(--brand-green);
+            color: white;
+            box-shadow: 0 6px 0 var(--brand-green-dark);
+            transition: transform 0.1s ease, box-shadow 0.1s ease;
+        }
+
+        button:active {
+            transform: translateY(4px);
+            box-shadow: 0 2px 0 var(--brand-green-dark);
+        }
+
+        button:disabled {
+            background-color: #ccc;
+            box-shadow: none;
+            cursor: not-allowed;
         }
     </style>
 </head>
