@@ -2,14 +2,22 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Saperstone Studios Photobooth</title>
+    <title>Photobooth</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
 
     <style>
         body {
             font-family: sans-serif;
             text-align: center;
             padding: 2rem;
+        }
+
+        img.logo {
+            max-width: 250px;
+            margin-bottom: 1.5rem;
         }
 
         #state {
@@ -25,7 +33,11 @@
 </head>
 <body>
 
-<h1>Saperstone Studios Photobooth</h1>
+<img
+        src="{{ url_for('static', filename='logo.png') }}"
+        alt="Saperstone Studios"
+        class="logo"
+/>
 
 <div id="state">Loading…</div>
 
@@ -48,7 +60,6 @@
         });
     }
 
-    // Poll every 500ms
     setInterval(fetchStatus, 500);
     fetchStatus();
 </script>
