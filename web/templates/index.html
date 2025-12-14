@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Saperstone Studios Photobooth</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <style>
+        body {
+            font-family: sans-serif;
+            text-align: center;
+            padding: 2rem;
+        }
+
+        #state {
+            font-size: 2rem;
+            margin: 2rem 0;
+        }
+
+        button {
+            font-size: 1.5rem;
+            padding: 1rem 2rem;
+        }
+    </style>
+</head>
+<body>
+
+<h1>Saperstone Studios Photobooth</h1>
+
+<div id="state">Loading…</div>
+
+<button onclick="startSession()">Start Session</button>
+
+<script>
+    async function fetchStatus() {
+        const response = await fetch("/status");
+        const data = await response.json();
+        document.getElementById("state").innerText = data.state;
+    }
+
+    async function startSession() {
+        await fetch("/start-session", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ print_count: 1 })
+        });
+    }
+
+    // Poll every 500ms
+    setInterval(fetchStatus, 500);
+    fetchStatus();
+</script>
+
+</body>
+</html>

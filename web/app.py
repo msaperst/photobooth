@@ -1,7 +1,7 @@
 """
 Flask application for photobooth UI and API.
 """
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, render_template
 
 from controller.controller import (
     PhotoboothController, Command, CommandType,
@@ -11,6 +11,11 @@ app = Flask(__name__)
 
 controller = PhotoboothController()
 controller.start()
+
+
+@app.route("/", methods=["GET"])
+def index():
+    return render_template("index.html")
 
 
 @app.route("/status", methods=["GET"])

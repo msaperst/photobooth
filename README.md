@@ -7,7 +7,8 @@ This repository contains **Photobooth v2**, an event‑grade, unattended‑capab
 * **Canon Selphy ES30** (prototype) → **Canon Selphy CP1300/CP1500** (production)
 * **iPad** as a fixed touchscreen UI (web‑based, no native app)
 
-The system is designed to be **offline‑capable**, **reproducible from scratch**, and **robust under real event conditions**.
+The system is designed to be **offline‑capable**, **reproducible from scratch**, and **robust under real event
+conditions**.
 
 ---
 
@@ -68,10 +69,10 @@ The system is designed to be **offline‑capable**, **reproducible from scratch*
 4. Pi enqueues a session command
 5. Controller executes:
 
-   * Countdown
-   * Photo capture loop
-   * Image processing
-   * Printing
+    * Countdown
+    * Photo capture loop
+    * Image processing
+    * Printing
 6. Status updates are streamed back to the UI
 7. System returns to idle
 
@@ -94,7 +95,8 @@ State is exposed read‑only to the UI via `/status`.
 
 ## Directory Structure
 
-The repository is organized to clearly separate **hardware control**, **user interaction**, **runtime data**, and **documentation**.  
+The repository is organized to clearly separate **hardware control**, **user interaction**, **runtime data**, and *
+*documentation**.  
 This separation is intentional and is critical for reliability and maintainability.
 
 ```text
@@ -133,16 +135,18 @@ photobooth/
 `controller/`
 
 Owns **all hardware interaction and session logic.**
+
 - Single authoritative owner of:
-  - Camera control (gphoto2)
-  - Image processing (ImageMagick)
-  - Printing (CUPS)
+    - Camera control (gphoto2)
+    - Image processing (ImageMagick)
+    - Printing (CUPS)
 - Single-threaded
 - No Flask or web concerns
 
 `web/`
 
 Owns all user interaction.
+
 - Flask app
 - Touchscreen UI
 - Status polling
@@ -151,6 +155,7 @@ Owns all user interaction.
 `sessions/`
 
 Runtime storage for per-session artifacts.
+
 - Raw captures
 - Processed images
 - Never committed to git
@@ -158,6 +163,7 @@ Runtime storage for per-session artifacts.
 `scripts/`
 
 One-time or infrequently-run system scripts.
+
 - OS helpers
 - Printer setup
 - Wi-Fi access point configuration
@@ -165,6 +171,7 @@ One-time or infrequently-run system scripts.
 `docs/`
 
 Project documentation.
+
 - Step-by-step rebuild docs live here
 - Architecture lives in the README
 
@@ -233,7 +240,9 @@ POST /start-session
 Payload:
 
 ```json
-{ "print_count": 2 }
+{
+  "print_count": 2
+}
 ```
 
 ### Status
@@ -309,6 +318,9 @@ If something can fail at an event, it eventually will — design accordingly.
 Implementation steps are intentionally documented in separate files to keep this README concise and readable.
 
 ### Step 0: Raspberry Pi Base Setup
+
 See: `docs/Step-0-Raspberry-Pi-Setup.md`
 
-Additional steps will be linked here as they are completed.
+### Step 1: Configure Raspberry Pi
+
+### Step 2: Run Application on Pi
