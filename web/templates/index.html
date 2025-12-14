@@ -40,15 +40,20 @@
 
 <script>
     let isBusy = false;
+    let wasBusy = false;
     let selectedStrips = 2;
 
-    function updateStripSelection(button) {
+    function setStripSelection(strips) {
         document.querySelectorAll(".strip-option").forEach(btn => {
-            btn.classList.remove("active");
+            const btnStrips = Number.parseInt(btn.dataset.strips, 10);
+            btn.classList.toggle("active", btnStrips === strips);
         });
+        selectedStrips = strips;
+    }
 
-        button.classList.add("active");
-        selectedStrips = parseInt(button.dataset.strips, 10);
+    function updateStripSelection(button) {
+        const strips = Number.parseInt(button.dataset.strips, 10);
+        setStripSelection(strips);
     }
 
     document.querySelectorAll(".strip-option").forEach(button => {
@@ -61,18 +66,23 @@
 
         document.getElementById("state").innerText = data.state;
 
+        wasBusy = isBusy;
         isBusy = data.busy;
-        document.getElementById("startButton").disabled = isBusy;
 
+        document.getElementById("startButton").disabled = isBusy;
         document.querySelectorAll(".strip-option").forEach(btn => {
             btn.disabled = isBusy;
         });
+
+        // Reset strip selection when a session finishes
+        if (wasBusy && !isBusy) {
+            setStripSelection(2);
+        }
     }
 
     async function startSession() {
         if (isBusy) return;
 
-        // Each 4x6 print contains 2 strips
         const printCount = selectedStrips / 2;
 
         const response = await fetch("/start-session", {
