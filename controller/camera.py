@@ -1,0 +1,37 @@
+from abc import ABC, abstractmethod
+from pathlib import Path
+from typing import List
+
+
+class CameraError(Exception):
+    pass
+
+
+class Camera(ABC):
+    """
+    Abstract camera interface.
+
+    All camera implementations (real or fake) must implement this contract.
+    """
+
+    @abstractmethod
+    def health_check(self) -> bool:
+        """Return True if the camera is connected and usable."""
+        pass
+
+    @abstractmethod
+    def start_live_view(self) -> None:
+        """Start live view streaming."""
+        pass
+
+    @abstractmethod
+    def stop_live_view(self) -> None:
+        """Stop live view streaming."""
+        pass
+
+    @abstractmethod
+    def capture_images(self, count: int) -> List[Path]:
+        """
+        Capture `count` images and return paths to the captured files.
+        """
+        pass

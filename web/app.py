@@ -1,15 +1,22 @@
 """
 Flask application for photobooth UI and API.
 """
+from pathlib import Path
+
 from flask import Flask, jsonify, request, render_template
 
 from controller.controller import (
     PhotoboothController, Command, CommandType,
 )
+from tests.fakes.fake_camera import FakeCamera
 
 app = Flask(__name__)
 
-controller = PhotoboothController()
+fake_image_dir = Path("/tmp/photobooth_fake_images")
+fake_image_dir.mkdir(exist_ok=True)
+
+camera = FakeCamera(fake_image_dir)
+controller = PhotoboothController(camera)
 controller.start()
 
 
