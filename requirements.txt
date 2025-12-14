@@ -1,5 +1,3 @@
-pycups
-coverage
-gphoto2
-mock
-wand
+flask
+pytest
+pytest-cov

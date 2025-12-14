@@ -1,113 +1,333 @@
-# FATMAX PHOTOBOOTH
+# Photobooth v2
 
-NOTE: This is designed and tested to work with a Nikon D700 (changing this camera shouldn't affect application),
-and the Canon Selphy ES30 (install and code changes are needed to handle alternate printers) 
+This repository contains **Photobooth v2**, an event‑grade, unattended‑capable photobooth system built around:
 
-## Test
-Unit Tests and code coverage
-```shell
-coverage run -m unittest main_test.py
-coverage report
-coverage html
-````
-## Install
-This is designed to run on a raspberry pi. On a basic pi OS, you'll need to do the following:
-1. Update the software repos
-```shell
-sudo apt update 
-sudo apt upgrade
+* **Raspberry Pi (Raspbian)** as the system controller
+* **Nikon D750** tethered via USB (gphoto2)
+* **Canon Selphy ES30** (prototype) → **Canon Selphy CP1300/CP1500** (production)
+* **iPad** as a fixed touchscreen UI (web‑based, no native app)
+
+The system is designed to be **offline‑capable**, **reproducible from scratch**, and **robust under real event
+conditions**.
+
+---
+
+## Design Goals
+
+* No operator required for normal operation
+* Single, authoritative hardware controller (no race conditions)
+* Offline operation (no internet required)
+* Guests receive clear feedback (live view + countdown)
+* Easy reprints and recovery when something goes wrong
+* Fully documented so the system can be rebuilt under pressure
+
+---
+
+## High‑Level Architecture
+
+### Core Principle
+
+> **Only one process ever touches hardware.**
+> UI and networking layers request actions but never directly control the camera or printer.
+
+### Component Roles
+
+**iPad (UI only)**
+
+* Touchscreen controls
+* Live camera preview
+* Countdown display
+* Print count selection
+* Connects via local Wi‑Fi to the Raspberry Pi
+
+**Raspberry Pi (Brain)**
+
+* Hosts Wi‑Fi access point
+* Hosts web UI and API
+* Owns camera and printer
+* Runs a single‑threaded controller with a command queue
+* Executes OS‑level commands (gphoto2, ImageMagick, CUPS)
+
+**Camera (Nikon D750)**
+
+* USB tethered
+* Fixed zoom and focus (manual)
+* Controlled exclusively via gphoto2
+
+**Printer (Canon Selphy)**
+
+* USB via CUPS
+* Controlled exclusively via CUPS
+
+---
+
+## System Flow Overview
+
+1. Guests see themselves on the iPad live preview
+2. Guest selects number of prints and taps **Start**
+3. UI sends request to Pi API
+4. Pi enqueues a session command
+5. Controller executes:
+
+    * Countdown
+    * Photo capture loop
+    * Image processing
+    * Printing
+6. Status updates are streamed back to the UI
+7. System returns to idle
+
+---
+
+## Session State Machine
+
+The controller operates as a strict state machine:
+
+* `IDLE`
+* `COUNTDOWN`
+* `CAPTURING`
+* `PROCESSING`
+* `PRINTING`
+* `IDLE`
+
+State is exposed read‑only to the UI via `/status`.
+
+---
+
+## Directory Structure
+
+The repository is organized to clearly separate **hardware control**, **user interaction**, **runtime data**, and *
+*documentation**.  
+This separation is intentional and is critical for reliability and maintainability.
+
+```text
+photobooth/
+├── controller/
+│   ├── __init__.py
+│   ├── controller.py
+│   ├── camera.py
+│   ├── printer.py
+│   └── image_processing.py
+│
+├── web/
+│   ├── __init__.py
+│   ├── app.py
+│   ├── templates/
+│   └── static/
+│
+├── sessions/
+│   └── .gitkeep
+│
+├── scripts/
+│   ├── setup_os.sh
+│   ├── setup_printer.sh
+│   └── setup_wifi_ap.sh
+│
+├── docs/
+│   └── Step-0-Raspberry-Pi-Setup.md
+│
+├── tests/
+│   ├── __init__.py
+│   ├── controller/
+│   │   └── test_controller.py
+│   └── web/
+│       └── test_api.py
+│
+├── requirements.txt
+├── .gitignore
+└── README.md
 ```
-2. Install python3.8
-```shell
-sudo apt install software-properties-common
-sudo apt-get install -y build-essential tk-dev libncurses5-dev libncursesw5-dev libreadline6-dev libdb5.3-dev libgdbm-dev libsqlite3-dev libssl-dev libbz2-dev libexpat1-dev liblzma-dev zlib1g-dev libffi-dev
-wget https://www.python.org/ftp/python/3.8.0/Python-3.8.0.tar.xz
-tar xf Python-3.8.0.tar.xz
-cd Python-3.8.0
-./configure --prefix=/usr/local/opt/python-3.8.0
-make -j 4
-sudo make altinstall
-cd ..
-sudo rm -r Python-3.8.0
-rm Python-3.8.0.tar.xz
-echo "alias python=/usr/local/opt/python-3.8.0/bin/python3.8" >> ~/.bashrc
-sudo echo "alias python=/usr/local/opt/python-3.8.0/bin/python3.8" >> /root/.bashrc
-. ~/.bashrc
-python --version
-sudo chown -R max.max /usr/local/opt/python-3.8.0/
+
+### Directory Responsibilities
+
+`controller/`
+
+Owns **all hardware interaction and session logic.**
+
+- Single authoritative owner of:
+    - Camera control (gphoto2)
+    - Image processing (ImageMagick)
+    - Printing (CUPS)
+- Single-threaded
+- No Flask or web concerns
+
+`web/`
+
+Owns all user interaction.
+
+- Flask app
+- Touchscreen UI
+- Status polling
+- Never talks to hardware directly
+
+`sessions/`
+
+Runtime storage for per-session artifacts.
+
+- Raw captures
+- Processed images
+- Never committed to git
+
+`scripts/`
+
+One-time or infrequently-run system scripts.
+
+- OS helpers
+- Printer setup
+- Wi-Fi access point configuration
+
+`docs/`
+
+Project documentation.
+
+- Step-by-step rebuild docs live here
+- Architecture lives in the README
+
+---
+
+## Camera Configuration
+
+### Physical Setup
+
+* Fixed focal length (zoom ring taped)
+* Manual focus
+* Floor markers for guest positioning
+* Aperture: f/8 – f/11
+* Large depth of field for reliability
+
+### Control
+
+* gphoto2 used exclusively
+* Live view via `gphoto2 --capture-movie`
+* Capture triggered by controller only
+
+---
+
+## Printing
+
+### Prototype Printer
+
+* Canon Selphy ES30
+* USB via CUPS
+
+### Production Target
+
+* Canon Selphy CP1300 or CP1500
+* Faster print times
+* Better driver support
+
+Printing is handled synchronously and sequentially to avoid printer overload.
+
+---
+
+## Networking
+
+* Raspberry Pi acts as Wi‑Fi Access Point
+* No internet required
+* iPad connects directly to Pi
+* UI accessed via browser (Safari)
+
+Example access:
+
 ```
-3. Install gphoto2
-```shell
-sudo apt install gphoto2
-sudo apt install libgphoto2-dev
-sudo apt install libgphoto2-6
+http://192.168.4.1
 ```
-4. Install cups and gutenprint
-```shell
-sudo apt install cups
-sudo apt install libcups2-dev
-sudo apt install printer-driver-gutenprint=5.3.1-7
+
+---
+
+## Web API (Internal)
+
+The API is intentionally minimal.
+
+### Start Session
+
+```http
+POST /start-session
 ```
-5. Install imagemagick
-```shell
-sudo apt-get install imagemagick
+
+Payload:
+
+```json
+{
+  "print_count": 2
+}
 ```
-6. Install printer
-```shell
-lpinfo -v
-lpadmin -p "Selphy" -v [device-uri] -E -m gutenprint.5.3://canon-es30/expert
+
+### Status
+
+```http
+GET /status
 ```
-   a. You might need to mess with [printer default options](https://www.cups.org/doc/options.html#OPTIONS). 
-   For the selphy, I needed to set borderless printing (still a problem), and photo quality
-   `lpoptions -p Selphy -o StpImageType=Photo`
-   `lpoptions -p Selphy -o StpiShrinkOutput=Expand`
-   `lpoptions -p Selphy -o StpBorderless=True`
-7. Copy over script
-```shell
-scp main.py [raspberry-ip]:~/
-scp logo.jpg [raspberry-ip]:~/
-scp requirements.txt [raspberry-ip]:~/
+
+Returns:
+
+```json
+{
+  "state": "COUNTDOWN",
+  "countdown": 3
+}
 ```
-8. Setup modules
-```shell
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
+
+### Live View
+
+```http
+GET /live-view
 ```
-9. Setup to run on start
-- Edit the `/etc/rc.local` file
-```shell
-sudo vim /etc/rc.local
-```
-- Before the `exit 0` line add the below
-```shell
-# Runs our photobooth program
-sudo /usr/local/opt/python-3.8.0/bin/python3.8 /home/max/main.py &
-```
-## Execute Manually
-```shell
-python main.py
-```
-## Usage
-Note that these steps need to be run in order, or 
-the application won't find the camera or printer
-Also note that all the steps in [Install](#install) 
-need to have been run
-1. Plug the printer into the raspberry pi using the 
-   mini usb square cable
-2. Plug the printer in the power outlet
-3. Turn on the printer
-4. Plug the camera into the raspberry pi using the 
-   mini usb otg cable
-5. Turn on the camera
-6. Plug the raspberry pi into a power outlet using 
-   the micro usb cable and power adapter
-7. Wait until the printer indicates it is connected
-8. Take photos
-9. Based on the default config, every three photos 
-   will be printed out with a logo
-> Note that it might take up to a minute between the 
-> third photo being taken and the printer starts printing
+
+Serves MJPEG stream.
+
+---
+
+## Safety & Concurrency Guarantees
+
+* Single controller thread
+* In‑memory command queue
+* No parallel hardware access
+* UI reloads are safe
+* iPad disconnect does not stop an active session
+
+---
+
+## Attendant Role (Optional)
+
+The system is designed to run unattended. When present, an attendant:
+
+* Helps position guests
+* Keeps groups moving
+* Handles edge cases
+
+The attendant does **not** operate the camera.
+
+---
+
+## Rebuild Philosophy
+
+This repository is intended to allow a full rebuild from scratch:
+
+* OS installation
+* Camera setup
+* Printer setup
+* Wi‑Fi configuration
+* Application install
+
+All critical steps must be scripted or documented.
+
+---
 
 ## Notes
-- This project is using python 3.8
 
+This project favors **reliability over cleverness**.
+If something can fail at an event, it eventually will — design accordingly.
+
+---
+
+## Implementation
+
+Implementation steps are intentionally documented in separate files to keep this README concise and readable.
+
+### Step 0: Raspberry Pi Base Setup
+
+See: `docs/Step-0-Raspberry-Pi-Setup.md`
+
+### Step 1: Configure Raspberry Pi
+
+### Step 2: Run Application on Pi
