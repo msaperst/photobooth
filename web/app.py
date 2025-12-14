@@ -25,8 +25,11 @@ def status():
 
 @app.route("/start-session", methods=["POST"])
 def start_session():
+    if controller.get_status()["busy"]:
+        return jsonify({"ok": False, "error": "busy"}), 409
+
     data = request.get_json(silent=True) or {}
-    print_count = data.get("print_count", 1)
+    print_count = int(data.get("print_count", 1))
 
     controller.enqueue(
         Command(

@@ -47,7 +47,8 @@ class PhotoboothController:
 
     def get_status(self):
         return {
-            "state": self.state.name
+            "state": self.state.name,
+            "busy": self.state != ControllerState.IDLE
         }
 
     def _run(self):

@@ -71,23 +71,51 @@
 
 <div id="state">Loading…</div>
 
-<button onclick="startSession()">Start Session</button>
+<div style="margin-bottom: 1.5rem;">
+    <label for="printCount" style="font-size: 1.2rem;">
+        Number of prints:
+    </label>
+    <select id="printCount" style="font-size: 1.2rem; padding: 0.5rem;">
+        <option value="1">1</option>
+        <option value="2">2</option>
+        <option value="3">3</option>
+        <option value="4">4</option>
+    </select>
+</div>
+
+<button id="startButton" onclick="startSession()">
+    Start Session
+</button>
 
 <script>
+    let isBusy = false;
+
     async function fetchStatus() {
         const response = await fetch("/status");
         const data = await response.json();
+
         document.getElementById("state").innerText = data.state;
+
+        isBusy = data.busy;
+        document.getElementById("startButton").disabled = isBusy;
     }
 
     async function startSession() {
-        await fetch("/start-session", {
+        if (isBusy) return;
+
+        const printCount = document.getElementById("printCount").value;
+
+        const response = await fetch("/start-session", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json"
             },
-            body: JSON.stringify({ print_count: 1 })
+            body: JSON.stringify({ print_count: printCount })
         });
+
+        if (!response.ok) {
+            alert("Photobooth is currently busy.");
+        }
     }
 
     setInterval(fetchStatus, 500);
