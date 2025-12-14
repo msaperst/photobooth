@@ -125,6 +125,13 @@ photobooth/
 ├── docs/
 │   └── Step-0-Raspberry-Pi-Setup.md
 │
+├── tests/
+│   ├── __init__.py
+│   ├── controller/
+│   │   └── test_controller.py
+│   └── web/
+│       └── test_api.py
+│
 ├── requirements.txt
 ├── .gitignore
 └── README.md
