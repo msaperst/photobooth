@@ -9,6 +9,8 @@ import time
 from enum import Enum, auto
 from queue import Queue
 
+from controller.camera import Camera
+
 
 class ControllerState(Enum):
     IDLE = auto()
@@ -29,7 +31,8 @@ class Command:
 
 
 class PhotoboothController:
-    def __init__(self):
+    def __init__(self, camera: Camera):
+        self.camera = camera
         self.state = ControllerState.IDLE
         self.command_queue = Queue()
         self._thread = threading.Thread(target=self._run, daemon=True)
@@ -71,7 +74,8 @@ class PhotoboothController:
         time.sleep(1)
 
         self.state = ControllerState.CAPTURING
-        time.sleep(1)
+        image_count = payload.get("image_count", 3)
+        self.camera.capture_images(image_count)
 
         self.state = ControllerState.PROCESSING
         time.sleep(1)
