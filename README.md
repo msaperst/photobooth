@@ -123,7 +123,8 @@ photobooth/
 │   └── setup_wifi_ap.sh
 │
 ├── docs/
-│   └── Step-0-Raspberry-Pi-Setup.md
+│   ├── Step-0-Raspberry-Pi-Setup.md
+│   └── testing-and-ci.md
 │
 ├── tests/
 │   ├── __init__.py
