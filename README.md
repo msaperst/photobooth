@@ -324,9 +324,17 @@ If something can fail at an event, it eventually will — design accordingly.
 
 Implementation steps are intentionally documented in separate files to keep this README concise and readable.
 
+### Development
+
+TBD
+
+### Testing & CI
+
+See: [docs/Testing-and-CI.md](docs/Testing-and-CI.md)
+
 ### Step 0: Raspberry Pi Base Setup
 
-See: `docs/Step-0-Raspberry-Pi-Setup.md`
+See: [docs/Step-0-Raspberry-Pi-Setup.md](docs/Step-0-Raspberry-Pi-Setup.md)
 
 ### Step 1: Configure Raspberry Pi
 
