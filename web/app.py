@@ -5,6 +5,7 @@ from pathlib import Path
 
 from flask import Flask, jsonify, request, render_template, Response
 
+from controller.camera import CameraError
 from controller.controller import (
     PhotoboothController, Command, CommandType,
 )
@@ -64,5 +65,8 @@ def take_photo():
 
 @app.route("/live-view")
 def live_view():
-    frame = controller.get_live_view_frame()
-    return Response(frame, mimetype="image/jpeg")
+    try:
+        frame = controller.get_live_view_frame()
+        return Response(frame, mimetype="image/jpeg")
+    except CameraError:
+        return "", 204  # No Content

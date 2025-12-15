@@ -20,7 +20,6 @@ class ControllerState(Enum):
     CAPTURING_PHOTO = auto()
     PROCESSING = auto()
     PRINTING = auto()
-    LIVE_VIEW = auto()
 
 
 class CommandType(Enum):
@@ -53,6 +52,11 @@ class PhotoboothController:
 
     def start(self):
         self._running = True
+
+        if self.camera.health_check():
+            self.camera.start_live_view()
+            self.state = ControllerState.READY_FOR_PHOTO
+
         self._thread.start()
 
     def stop(self):
@@ -70,16 +74,6 @@ class PhotoboothController:
                 "total_photos": self.total_photos,
                 "countdown_remaining": self.countdown_remaining,
             }
-
-    def start_live_view(self):
-        if self.state == ControllerState.IDLE:
-            self.camera.start_live_view()
-            self.state = ControllerState.LIVE_VIEW
-
-    def stop_live_view(self):
-        if self.state == ControllerState.LIVE_VIEW:
-            self.camera.stop_live_view()
-            self.state = ControllerState.IDLE
 
     def get_live_view_frame(self) -> bytes:
         return self.camera.get_live_view_frame()
@@ -132,6 +126,7 @@ class PhotoboothController:
 
         with self._state_lock:
             self.state = ControllerState.CAPTURING_PHOTO
+            self.camera.stop_live_view()
 
         try:
             self.camera.capture(self.image_root)
@@ -143,6 +138,7 @@ class PhotoboothController:
 
         with self._state_lock:
             self.photos_taken += 1
+            self.camera.start_live_view()
             if self.photos_taken < self.total_photos:
                 self.state = ControllerState.READY_FOR_PHOTO
                 return
