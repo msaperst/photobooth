@@ -206,3 +206,7 @@ If this works → 🎉 camera integration at OS level is DONE
 ```bash
 rm test_*.jpg
 ```
+
+# TODO
+
+- configure system to be wifi hotspot

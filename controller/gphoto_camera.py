@@ -7,6 +7,7 @@ from controller.camera import Camera, CameraError
 
 class GPhotoCamera(Camera):
     def __init__(self, timeout: int = 10):
+        self._live_view_active = False
         self.timeout = timeout
 
     # ---------- Required interface ----------
@@ -28,16 +29,24 @@ class GPhotoCamera(Camera):
             return False
 
     def start_live_view(self) -> None:
-        """
-        Live view not implemented yet.
-        """
-        raise NotImplementedError("Live view is not implemented yet")
+        self._live_view_active = True
 
     def stop_live_view(self) -> None:
-        """
-        Live view not implemented yet.
-        """
-        raise NotImplementedError("Live view is not implemented yet")
+        self._live_view_active = False
+
+    def get_live_view_frame(self) -> bytes:
+        if not self._live_view_active:
+            raise CameraError("Live view not started")
+
+        result = subprocess.run(
+            ["gphoto2", "--capture-preview", "--stdout"],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=2,
+        )
+
+        return result.stdout
 
     def capture(self, output_dir: Path) -> Path:
         output_dir.mkdir(parents=True, exist_ok=True)

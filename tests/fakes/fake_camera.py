@@ -20,6 +20,9 @@ class FakeCamera(Camera):
     def stop_live_view(self) -> None:
         pass
 
+    def get_live_view_frame(self):
+        return b"fake jpeg"
+
     def capture(self, output_dir: Path) -> Path:
         output_dir.mkdir(parents=True, exist_ok=True)
 

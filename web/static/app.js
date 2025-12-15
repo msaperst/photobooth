@@ -97,6 +97,11 @@ function initUI() {
 
     setInterval(poll, 500);
     poll();
+
+    setInterval(() => {
+        const img = document.getElementById("liveView");
+        img.src = `/live-view?ts=${Date.now()}`;
+    }, 250);
 }
 
 if (isBrowser) {
