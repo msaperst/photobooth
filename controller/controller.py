@@ -50,12 +50,23 @@ class PhotoboothController:
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._running = False
 
+        self._latest_live_view_frame: bytes | None = None
+        self._live_view_lock = threading.Lock()
+        self._live_view_running = False
+
     def start(self):
         self._running = True
+        if self.camera.health_check():
+            self.camera.start_live_view()
+            self._start_live_view_worker()
         self._thread.start()
 
     def stop(self):
         self._running = False
+        try:
+            self.camera.stop_live_view()
+        except Exception:
+            pass
 
     def enqueue(self, command: Command):
         self.command_queue.put(command)
@@ -70,6 +81,10 @@ class PhotoboothController:
                 "countdown_remaining": self.countdown_remaining,
             }
 
+    def get_live_view_frame(self) -> bytes | None:
+        with self._live_view_lock:
+            return self._latest_live_view_frame
+
     def _run(self):
         while self._running:
             try:
@@ -82,10 +97,12 @@ class PhotoboothController:
 
     def _handle_command(self, command: Command):
         if command.command_type == CommandType.START_SESSION:
+            # with self._state_lock:
             if self.state == ControllerState.IDLE:
                 self._start_session(command.payload)
 
         elif command.command_type == CommandType.TAKE_PHOTO:
+            # with self._state_lock:
             if self.state == ControllerState.READY_FOR_PHOTO:
                 self._begin_photo_capture()
 
@@ -113,11 +130,13 @@ class PhotoboothController:
             with self._state_lock:
                 if self.countdown_remaining <= 0:
                     break
-                self.countdown_remaining -= 1
             time.sleep(1)
+            with self._state_lock:
+                self.countdown_remaining -= 1
 
         with self._state_lock:
             self.state = ControllerState.CAPTURING_PHOTO
+            self.camera.stop_live_view()
 
         try:
             self.camera.capture(self.image_root)
@@ -129,6 +148,7 @@ class PhotoboothController:
 
         with self._state_lock:
             self.photos_taken += 1
+            self.camera.start_live_view()
             if self.photos_taken < self.total_photos:
                 self.state = ControllerState.READY_FOR_PHOTO
                 return
@@ -153,3 +173,34 @@ class PhotoboothController:
         with self._state_lock:
             self.session_active = False
             self.state = ControllerState.IDLE
+
+    def _start_live_view_worker(self):
+        if self._live_view_running:
+            return
+
+        self._live_view_running = True
+
+        threading.Thread(
+            target=self._live_view_worker,
+            daemon=True,
+        ).start()
+
+    def _live_view_worker(self):
+        while self._running:
+            with self._state_lock:
+                if self.state not in (
+                        ControllerState.IDLE,
+                        ControllerState.READY_FOR_PHOTO,
+                ):
+                    time.sleep(0.2)
+                    continue
+
+            try:
+                frame = self.camera.get_live_view_frame()
+                with self._live_view_lock:
+                    self._latest_live_view_frame = frame
+            except Exception:
+                pass
+
+            # 🔑 CRITICAL: throttle
+            time.sleep(0.5)  # ~2 FPS, realistic for Nikon

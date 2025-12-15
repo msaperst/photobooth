@@ -3,7 +3,7 @@ Flask application for photobooth UI and API.
 """
 from pathlib import Path
 
-from flask import Flask, jsonify, request, render_template
+from flask import Flask, jsonify, request, render_template, Response
 
 from controller.controller import (
     PhotoboothController, Command, CommandType,
@@ -60,3 +60,11 @@ def take_photo():
     )
 
     return jsonify({"ok": True})
+
+
+@app.route("/live-view", methods=["GET"])
+def live_view():
+    frame = controller.get_live_view_frame()
+    if not frame:
+        return "", 204
+    return Response(frame, mimetype="image/jpeg")

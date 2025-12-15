@@ -83,3 +83,37 @@ def test_take_photo_rejected_when_not_ready(client, monkeypatch):
 
     response = client.post("/take-photo")
     assert response.status_code == 409
+
+
+def test_live_view_returns_204_when_no_frame(client, monkeypatch):
+    # None -> 204
+    monkeypatch.setattr(controller, "get_live_view_frame", lambda: None)
+
+    resp = client.get("/live-view")
+    assert resp.status_code == 204
+    assert resp.data == b""
+
+
+def test_live_view_returns_204_when_empty_bytes(client, monkeypatch):
+    # b"" -> 204 (since `if not frame:`)
+    monkeypatch.setattr(controller, "get_live_view_frame", lambda: b"")
+
+    resp = client.get("/live-view")
+    assert resp.status_code == 204
+    assert resp.data == b""
+
+
+def test_live_view_returns_jpeg_when_frame_exists(client, monkeypatch):
+    fake_frame = b"\xff\xd8\xff\xe0" + b"fakejpegdata" + b"\xff\xd9"
+    monkeypatch.setattr(controller, "get_live_view_frame", lambda: fake_frame)
+
+    resp = client.get("/live-view")
+    assert resp.status_code == 200
+    assert resp.mimetype == "image/jpeg"
+    assert resp.data == fake_frame
+
+
+def test_index_page_renders(client):
+    response = client.get("/")
+    assert response.status_code == 200
+    assert response.content_type.startswith("text/html")

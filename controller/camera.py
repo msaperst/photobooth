@@ -29,6 +29,11 @@ class Camera(ABC):
         pass
 
     @abstractmethod
+    def get_live_view_frame(self) -> bytes:
+        """Return a single JPEG frame from live view."""
+        pass
+
+    @abstractmethod
     def capture(self, output_dir: Path) -> Path:
         """Capture a single photo and return the saved file path."""
         pass
