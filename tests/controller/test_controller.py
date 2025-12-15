@@ -10,7 +10,7 @@ from tests.helpers import wait_for
 
 def test_manual_photo_progression(tmp_path):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera)
+    controller = PhotoboothController(camera, tmp_path)
     controller.start()
 
     controller.enqueue(
@@ -36,13 +36,13 @@ def test_manual_photo_progression(tmp_path):
 
 def test_controller_starts_idle(tmp_path):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera)
+    controller = PhotoboothController(camera, tmp_path)
     assert controller.state == ControllerState.IDLE
 
 
 def test_start_session_enters_ready_for_photo(tmp_path):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera)
+    controller = PhotoboothController(camera, tmp_path)
     controller.start()
 
     controller.enqueue(Command(CommandType.START_SESSION))
@@ -52,7 +52,7 @@ def test_start_session_enters_ready_for_photo(tmp_path):
 
 def test_busy_flag_after_start_session(tmp_path):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera)
+    controller = PhotoboothController(camera, tmp_path)
     controller.start()
 
     controller.enqueue(Command(CommandType.START_SESSION))

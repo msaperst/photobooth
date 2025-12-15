@@ -8,15 +8,15 @@ from flask import Flask, jsonify, request, render_template
 from controller.controller import (
     PhotoboothController, Command, CommandType,
 )
-from tests.fakes.fake_camera import FakeCamera
+from controller.gphoto_camera import GPhotoCamera
 
 app = Flask(__name__)
 
-fake_image_dir = Path("/tmp/photobooth_fake_images")
-fake_image_dir.mkdir(exist_ok=True)
-
-camera = FakeCamera(fake_image_dir)
-controller = PhotoboothController(camera)
+camera = GPhotoCamera()
+controller = PhotoboothController(
+    camera=camera,
+    image_root=Path("/home/max/photobooth"),
+)
 controller.start()
 
 
