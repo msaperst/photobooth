@@ -342,3 +342,5 @@ See: [step-0-raspberry-pi-setup.md](docs/step-0-raspberry-pi-setup.md)
 See: [step-1-raspberry-pi-configure.md](docs/step-1-raspberry-pi-configure.md)
 
 ### Step 2: Run Application on Pi
+
+See: [step-2-deploy-and-run-on-raspberry-pi.md](docs/step-2-deploy-and-run-on-raspberry-pi.md)
