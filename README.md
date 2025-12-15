@@ -331,12 +331,14 @@ TBD
 
 ### Testing & CI
 
-See: [docs/Testing-and-CI.md](docs/Testing-and-CI.md)
+See: [testing-and-ci.md](docs/testing-and-ci.md)
 
 ### Step 0: Raspberry Pi Base Setup
 
-See: [docs/Step-0-Raspberry-Pi-Setup.md](docs/Step-0-Raspberry-Pi-Setup.md)
+See: [step-0-raspberry-pi-setup.md](docs/step-0-raspberry-pi-setup.md)
 
 ### Step 1: Configure Raspberry Pi
+
+See: [step-1-raspberry-pi-configure.md](docs/step-1-raspberry-pi-configure.md)
 
 ### Step 2: Run Application on Pi
