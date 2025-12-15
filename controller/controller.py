@@ -76,6 +76,14 @@ class PhotoboothController:
             }
 
     def get_live_view_frame(self) -> bytes:
+        with self._state_lock:
+            if self.state in (
+                    ControllerState.READY_FOR_PHOTO,
+                    ControllerState.IDLE,
+            ):
+                if not self.camera._live_view_active:
+                    self._ensure_live_view()
+
         return self.camera.get_live_view_frame()
 
     def _run(self):
@@ -163,3 +171,13 @@ class PhotoboothController:
         with self._state_lock:
             self.session_active = False
             self.state = ControllerState.IDLE
+
+    def _ensure_live_view(self):
+        if self.state in (
+                ControllerState.READY_FOR_PHOTO,
+                ControllerState.IDLE,
+        ):
+            try:
+                self.camera.start_live_view()
+            except Exception as e:
+                print(f"Failed to start live view: {e}")
