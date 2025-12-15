@@ -49,17 +49,16 @@ class PhotoboothController:
         self.command_queue = Queue()
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._running = False
-        self._live_view_started = False
+
+        self._latest_live_view_frame: bytes | None = None
+        self._live_view_lock = threading.Lock()
+        self._live_view_running = False
 
     def start(self):
         self._running = True
-        # Start live view immediately if camera is available
         if self.camera.health_check():
-            try:
-                self.camera.start_live_view()
-                self._live_view_started = True
-            except Exception as e:
-                print(f"Live view start failed: {repr(e)}")
+            self.camera.start_live_view()
+            self._start_live_view_worker()
         self._thread.start()
 
     def stop(self):
@@ -79,30 +78,8 @@ class PhotoboothController:
             }
 
     def get_live_view_frame(self) -> bytes | None:
-        """
-        Return a JPEG frame if we're in a state where preview is allowed.
-        Return None if not allowed or frame unavailable.
-        """
-        with self._state_lock:
-            allowed = self.state in (ControllerState.READY_FOR_PHOTO, ControllerState.IDLE)
-            if not allowed:
-                return None
-
-        # Start on-demand (outside lock to avoid blocking controller state)
-        if not self._live_view_started:
-            try:
-                self.camera.start_live_view()
-                self._live_view_started = True
-            except Exception as e:
-                print(f"Live view start failed: {repr(e)}")
-                return None
-
-        try:
-            return self.camera.get_live_view_frame()
-        except Exception as e:
-            # Do not spam logs too hard; but keep a breadcrumb
-            print(f"Live view frame error: {repr(e)}")
-            return None
+        with self._live_view_lock:
+            return self._latest_live_view_frame
 
     def _run(self):
         while self._running:
@@ -152,14 +129,7 @@ class PhotoboothController:
 
         with self._state_lock:
             self.state = ControllerState.CAPTURING_PHOTO
-
-        # Stop live view during capture to avoid camera conflicts
-        if self._live_view_started:
-            try:
-                self.camera.stop_live_view()
-            except Exception as e:
-                print(f"Live view stop failed: {repr(e)}")
-            self._live_view_started = False
+            self.camera.stop_live_view()
 
         try:
             self.camera.capture(self.image_root)
@@ -169,16 +139,9 @@ class PhotoboothController:
                 self.state = ControllerState.IDLE
             return
 
-        # Restart live view after capture
-        try:
-            self.camera.start_live_view()
-            self._live_view_started = True
-        except Exception as e:
-            print(f"Live view restart failed: {repr(e)}")
-            self._live_view_started = False
-
         with self._state_lock:
             self.photos_taken += 1
+            self.camera.start_live_view()
             if self.photos_taken < self.total_photos:
                 self.state = ControllerState.READY_FOR_PHOTO
                 return
@@ -203,3 +166,34 @@ class PhotoboothController:
         with self._state_lock:
             self.session_active = False
             self.state = ControllerState.IDLE
+
+    def _start_live_view_worker(self):
+        if self._live_view_running:
+            return
+
+        self._live_view_running = True
+
+        threading.Thread(
+            target=self._live_view_worker,
+            daemon=True,
+        ).start()
+
+    def _live_view_worker(self):
+        while self._running:
+            with self._state_lock:
+                if self.state not in (
+                        ControllerState.IDLE,
+                        ControllerState.READY_FOR_PHOTO,
+                ):
+                    time.sleep(0.2)
+                    continue
+
+            try:
+                frame = self.camera.get_live_view_frame()
+                with self._live_view_lock:
+                    self._latest_live_view_frame = frame
+            except Exception:
+                pass
+
+            # 🔑 CRITICAL: throttle
+            time.sleep(0.5)  # ~2 FPS, realistic for Nikon

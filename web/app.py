@@ -66,5 +66,5 @@ def take_photo():
 def live_view():
     frame = controller.get_live_view_frame()
     if not frame:
-        return ("", 204)
+        return "", 204
     return Response(frame, mimetype="image/jpeg")
