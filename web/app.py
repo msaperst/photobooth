@@ -46,3 +46,17 @@ def start_session():
     )
 
     return jsonify({"ok": True})
+
+
+@app.route("/take-photo", methods=["POST"])
+def take_photo():
+    status = controller.get_status()
+
+    if status["state"] != "READY_FOR_PHOTO":
+        return jsonify({"ok": False, "error": "not_ready"}), 409
+
+    controller.enqueue(
+        Command(CommandType.TAKE_PHOTO)
+    )
+
+    return jsonify({"ok": True})
