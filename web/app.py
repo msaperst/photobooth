@@ -69,4 +69,5 @@ def live_view():
         frame = controller.get_live_view_frame()
         return Response(frame, mimetype="image/jpeg")
     except CameraError as e:
-        return e, 204  # No Content
+        print(">>> ERROR: ", e)
+        return "", 204  # No Content
