@@ -101,7 +101,7 @@ function initUI() {
     setInterval(() => {
         const img = document.getElementById("liveView");
         img.src = `/live-view?ts=${Date.now()}`;
-    }, 250);
+    }, 400);
 }
 
 if (isBrowser) {

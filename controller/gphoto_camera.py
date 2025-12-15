@@ -29,24 +29,43 @@ class GPhotoCamera(Camera):
             return False
 
     def start_live_view(self) -> None:
+        subprocess.run(
+            ["gphoto2", "--set-config", "/main/actions/viewfinder=1"],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
         self._live_view_active = True
 
     def stop_live_view(self) -> None:
+        subprocess.run(
+            ["gphoto2", "--set-config", "/main/actions/viewfinder=0"],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
         self._live_view_active = False
 
     def get_live_view_frame(self) -> bytes:
         if not self._live_view_active:
             raise CameraError("Live view not started")
 
-        result = subprocess.run(
-            ["gphoto2", "--capture-preview", "--stdout"],
-            check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            timeout=2,
-        )
+        try:
+            result = subprocess.run(
+                ["gphoto2", "--capture-preview", "--stdout"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                timeout=1.0,
+                check=True,
+            )
+            return result.stdout
 
-        return result.stdout
+        except subprocess.CalledProcessError:
+            # Camera busy, frame dropped — normal
+            raise CameraError("Live view frame unavailable")
+
+        except subprocess.TimeoutExpired:
+            raise CameraError("Live view frame timeout")
 
     def capture(self, output_dir: Path) -> Path:
         output_dir.mkdir(parents=True, exist_ok=True)
