@@ -40,15 +40,10 @@ class GPhotoCamera(Camera):
         raise NotImplementedError("Live view is not implemented yet")
 
     def capture(self, output_dir: Path) -> Path:
-        print(">>> GPHOTO: starting capture")
-
-        print(">>> GPHOTO: ", output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
         filename = datetime.now().strftime("photo_%Y%m%d_%H%M%S.jpg")
         output_path = output_dir / filename
-
-        print(">>> CONTROLLER: calling camera.capture()")
 
         cmd = [
             "gphoto2",
@@ -58,7 +53,6 @@ class GPhotoCamera(Camera):
             str(output_path),
         ]
 
-        print(">>> COMMAND: ", cmd)
         try:
             subprocess.run(
                 cmd,
@@ -76,7 +70,5 @@ class GPhotoCamera(Camera):
 
         if not output_path.exists():
             raise CameraError("Camera reported success but no file was created")
-
-        print(">>> GPHOTO: starting capture")
 
         return output_path

@@ -1,32 +1,31 @@
+# tests/fakes/fake_camera.py (or similar)
+
+from datetime import datetime
 from pathlib import Path
-from typing import List
 
 from controller.camera import Camera
 
 
 class FakeCamera(Camera):
-    def __init__(self, image_dir: Path):
-        self.image_dir = image_dir
-        self.live_view_active = False
-        self._capture_index = 0
+    def __init__(self, image_root: Path):
+        self.image_root = image_root
+        self.captured_images = []
 
     def health_check(self) -> bool:
         return True
 
     def start_live_view(self) -> None:
-        self.live_view_active = True
+        pass
 
     def stop_live_view(self) -> None:
-        self.live_view_active = False
+        pass
 
-    def capture_images(self, count: int) -> List[Path]:
-        images = []
+    def capture(self, output_dir: Path) -> Path:
+        output_dir.mkdir(parents=True, exist_ok=True)
 
-        for _ in range(count):
-            path = self.image_dir / f"fake_image_{self._capture_index}.jpg"
-            self._capture_index += 1
+        filename = f"fake_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
+        path = output_dir / filename
+        path.write_bytes(b"fake image data")
 
-            path.write_text("fake image data")
-            images.append(path)
-
-        return images
+        self.captured_images.append(path)
+        return path
