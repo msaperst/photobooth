@@ -1,5 +1,38 @@
+import { getButtonLabel } from "./ui_logic.js";
+
+const isBrowser = typeof window !== "undefined";
+
+function updateButton(status) {
+    const button = document.getElementById("startButton");
+    button.innerText = getButtonLabel(status);
+    button.disabled = !(
+        status.state === "IDLE" ||
+        status.state === "READY_FOR_PHOTO"
+    );
+}
+
 let selectedStrips = 2;
 let lastBusy = false;
+
+export function getButtonLabel(status) {
+    const { state, photos_taken, total_photos, countdown_remaining } = status;
+
+    if (state === "IDLE" || state === "READY_FOR_PHOTO") {
+        return `Take Photo (${photos_taken % total_photos + 1} of ${total_photos})`;
+    }
+
+    if (state === "COUNTDOWN") {
+        return countdown_remaining > 0
+            ? countdown_remaining.toString()
+            : "Smile!";
+    }
+
+    if (state === "CAPTURING_PHOTO") return "Capturing…";
+    if (state === "PROCESSING") return "Processing…";
+    if (state === "PRINTING") return "Printing…";
+
+    return state;
+}
 
 /* ---------- Strip Selection ---------- */
 
@@ -18,15 +51,6 @@ function enableStripSelection(enabled) {
     });
 }
 
-// Wire strip buttons
-document.querySelectorAll(".strip-option").forEach(button => {
-    button.addEventListener("click", () => {
-        if (button.disabled) return;
-        const strips = Number.parseInt(button.dataset.strips, 10);
-        setStripSelection(strips);
-    });
-});
-
 /* ---------- API ---------- */
 
 async function fetchStatus() {
@@ -35,42 +59,6 @@ async function fetchStatus() {
 }
 
 /* ---------- Main Button ---------- */
-
-function updateButton(status) {
-console.log(status)
-    const button = document.getElementById("startButton");
-
-    button.disabled = true;
-
-    switch (status.state) {
-        case "IDLE":
-        case "READY_FOR_PHOTO":
-            button.innerText = `Take Photo (${status.photos_taken % 3 + 1} of ${status.total_photos})`;
-            button.disabled = false;
-            break;
-
-        case "COUNTDOWN":
-            button.innerText = status.countdown_remaining > 0
-                ? status.countdown_remaining.toString()
-                : "Smile!";
-            break;
-
-        case "CAPTURING_PHOTO":
-            button.innerText = "Capturing…";
-            break;
-
-        case "PROCESSING":
-            button.innerText = "Processing…";
-            break;
-
-        case "PRINTING":
-            button.innerText = "Printing…";
-            break;
-
-        default:
-            button.innerText = status.state;
-    }
-}
 
 async function handleButtonClick() {
     const status = await fetchStatus();
@@ -113,9 +101,24 @@ async function poll() {
     lastBusy = status.busy;
 }
 
-document
-    .getElementById("startButton")
-    .addEventListener("click", handleButtonClick);
+function initUI() {
+    // Wire strip buttons
+    document.querySelectorAll(".strip-option").forEach(button => {
+        button.addEventListener("click", () => {
+            if (button.disabled) return;
+            const strips = Number.parseInt(button.dataset.strips, 10);
+            setStripSelection(strips);
+        });
+    });
 
-setInterval(poll, 500);
-poll();
+    document
+        .getElementById("startButton")
+        .addEventListener("click", handleButtonClick);
+
+    setInterval(poll, 500);
+    poll();
+}
+
+if (isBrowser) {
+    initUI();
+}
