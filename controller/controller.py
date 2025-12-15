@@ -97,14 +97,14 @@ class PhotoboothController:
 
     def _handle_command(self, command: Command):
         if command.command_type == CommandType.START_SESSION:
-            with self._state_lock:
-                if self.state == ControllerState.IDLE:
-                    self._start_session(command.payload)
+            # with self._state_lock:
+            if self.state == ControllerState.IDLE:
+                self._start_session(command.payload)
 
         elif command.command_type == CommandType.TAKE_PHOTO:
-            with self._state_lock:
-                if self.state == ControllerState.READY_FOR_PHOTO:
-                    self._begin_photo_capture()
+            # with self._state_lock:
+            if self.state == ControllerState.READY_FOR_PHOTO:
+                self._begin_photo_capture()
 
     def _start_session(self, payload):
         self.session_active = True
