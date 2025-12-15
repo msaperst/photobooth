@@ -49,9 +49,17 @@ class PhotoboothController:
         self.command_queue = Queue()
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._running = False
+        self._live_view_started = False
 
     def start(self):
         self._running = True
+        # Start live view immediately if camera is available
+        if self.camera.health_check():
+            try:
+                self.camera.start_live_view()
+                self._live_view_started = True
+            except Exception as e:
+                print(f"Live view start failed: {repr(e)}")
         self._thread.start()
 
     def stop(self):
@@ -69,6 +77,32 @@ class PhotoboothController:
                 "total_photos": self.total_photos,
                 "countdown_remaining": self.countdown_remaining,
             }
+
+    def get_live_view_frame(self) -> bytes | None:
+        """
+        Return a JPEG frame if we're in a state where preview is allowed.
+        Return None if not allowed or frame unavailable.
+        """
+        with self._state_lock:
+            allowed = self.state in (ControllerState.READY_FOR_PHOTO, ControllerState.IDLE)
+            if not allowed:
+                return None
+
+        # Start on-demand (outside lock to avoid blocking controller state)
+        if not self._live_view_started:
+            try:
+                self.camera.start_live_view()
+                self._live_view_started = True
+            except Exception as e:
+                print(f"Live view start failed: {repr(e)}")
+                return None
+
+        try:
+            return self.camera.get_live_view_frame()
+        except Exception as e:
+            # Do not spam logs too hard; but keep a breadcrumb
+            print(f"Live view frame error: {repr(e)}")
+            return None
 
     def _run(self):
         while self._running:
@@ -119,6 +153,14 @@ class PhotoboothController:
         with self._state_lock:
             self.state = ControllerState.CAPTURING_PHOTO
 
+        # Stop live view during capture to avoid camera conflicts
+        if self._live_view_started:
+            try:
+                self.camera.stop_live_view()
+            except Exception as e:
+                print(f"Live view stop failed: {repr(e)}")
+            self._live_view_started = False
+
         try:
             self.camera.capture(self.image_root)
         except Exception as e:
@@ -126,6 +168,14 @@ class PhotoboothController:
                 print(f"Camera capture failed: {repr(e)}")
                 self.state = ControllerState.IDLE
             return
+
+        # Restart live view after capture
+        try:
+            self.camera.start_live_view()
+            self._live_view_started = True
+        except Exception as e:
+            print(f"Live view restart failed: {repr(e)}")
+            self._live_view_started = False
 
         with self._state_lock:
             self.photos_taken += 1
