@@ -14,14 +14,16 @@ from controller.camera import Camera
 
 class ControllerState(Enum):
     IDLE = auto()
+    READY_FOR_PHOTO = auto()
     COUNTDOWN = auto()
-    CAPTURING = auto()
+    CAPTURING_PHOTO = auto()
     PROCESSING = auto()
     PRINTING = auto()
 
 
 class CommandType(Enum):
     START_SESSION = auto()
+    TAKE_PHOTO = auto()
 
 
 class Command:
@@ -32,6 +34,13 @@ class Command:
 
 class PhotoboothController:
     def __init__(self, camera: Camera):
+        self.total_photos = 3
+        self.photos_taken = 0
+        self.session_active = False
+
+        self.countdown_seconds = 3
+        self.countdown_remaining = 0
+
         self.camera = camera
         self.state = ControllerState.IDLE
         self.command_queue = Queue()
@@ -51,7 +60,10 @@ class PhotoboothController:
     def get_status(self):
         return {
             "state": self.state.name,
-            "busy": self.state != ControllerState.IDLE
+            "busy": self.state != ControllerState.IDLE,
+            "photos_taken": self.photos_taken,
+            "total_photos": self.total_photos,
+            "countdown_remaining": self.countdown_remaining,
         }
 
     def _run(self):
@@ -64,23 +76,43 @@ class PhotoboothController:
 
     def _handle_command(self, command: Command):
         if command.command_type == CommandType.START_SESSION:
-            if self.state != ControllerState.IDLE:
-                return
+            if self.state == ControllerState.IDLE:
+                self._start_session(command.payload)
 
-            self._run_session(command.payload)
+        elif command.command_type == CommandType.TAKE_PHOTO:
+            if self.state == ControllerState.READY_FOR_PHOTO:
+                self._begin_photo_capture()
 
-    def _run_session(self, payload):
+    def _start_session(self, payload):
+        self.session_active = True
+        self.photos_taken = 0
+        self.total_photos = payload.get("image_count", 3)
+
+        self.state = ControllerState.READY_FOR_PHOTO
+
+    def _begin_photo_capture(self):
         self.state = ControllerState.COUNTDOWN
-        time.sleep(1)
+        self.countdown_remaining = self.countdown_seconds
 
-        self.state = ControllerState.CAPTURING
-        image_count = payload.get("image_count", 3)
-        self.camera.capture_images(image_count)
+        while self.countdown_remaining > 0:
+            time.sleep(1)
+            self.countdown_remaining -= 1
 
+        self.state = ControllerState.CAPTURING_PHOTO
+        self.camera.capture_images(1)
+        self.photos_taken += 1
+
+        if self.photos_taken < self.total_photos:
+            self.state = ControllerState.READY_FOR_PHOTO
+        else:
+            self._finish_session()
+
+    def _finish_session(self):
         self.state = ControllerState.PROCESSING
         time.sleep(1)
 
         self.state = ControllerState.PRINTING
         time.sleep(1)
 
+        self.session_active = False
         self.state = ControllerState.IDLE

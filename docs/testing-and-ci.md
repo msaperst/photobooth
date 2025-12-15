@@ -18,6 +18,20 @@ The goal is to catch regressions **before events**, not during them.
     - Runnable locally without special setup
 - Regressions should be caught by CI, not in production
 
+This project intentionally separates:
+
+- **Logic** (unit tested, covered, CI-enforced)
+- **Orchestration** (hardware, browser, OS-level concerns)
+
+This approach:
+
+- Keeps tests fast and deterministic
+- Avoids brittle mocks of hardware or DOM
+- Allows confident refactoring
+- Ensures CI failures represent real regressions
+
+Not all code is unit tested — only code where unit testing provides clear value.
+
 ---
 
 ## What Is Tested
@@ -48,6 +62,8 @@ These areas will be added incrementally as abstractions are introduced.
 
 Before opening a pull request, tests **must** be run locally.
 
+### Python
+
 From the project root:
 
 ```bash
@@ -68,6 +84,43 @@ pytest --cov=controller --cov=web --cov-fail-under=80
 
 If this command fails locally, CI will fail as well.
 
+### JavaScript
+
+Frontend JavaScript is tested using **Vitest**.
+
+Tests focus exclusively on **pure UI logic**, such as:
+
+- Button label determination
+- State-to-UI mapping
+- Countdown display behavior
+
+Browser-specific code (DOM manipulation, timers, fetch calls) is intentionally excluded
+from unit testing and coverage metrics.
+
+From the project root:
+
+```bash
+npm test
+```
+
+This will:
+
+- Run all unit tests
+
+To enforce the same coverage threshold as CI:
+
+```bash
+npm run test:coverage
+```
+
+If this command fails locally, CI will fail as well.
+
+Coverage results will be printed to the console and an HTML report will be generated at:
+
+```bash
+coverage/js/index.html
+```
+
 ---
 
 ## Continuous Integration (GitHub Actions)
@@ -77,15 +130,21 @@ All pushes and pull requests trigger CI.
 CI performs the following steps:
 
 1. Checks out the repository
-2. Sets up Python (currently Python 3.12)
-3. Installs dependencies from requirements.txt
-4. Runs all unit tests
-5. Fails if:
-
-- Any test fails
-- Coverage drops below the enforced threshold
-
-No code should be merged unless CI is fully green.
+2. For Python
+    1. Sets up Python (currently Python 3.12)
+    2. Installs dependencies from requirements.txt
+    3. Runs all unit tests
+    4. Fails if:
+        - Any test fails
+        - Coverage drops below the enforced threshold
+3. For JavaScript
+    1. Sets up Node (currently Python 22)
+    2. Installs dependencies from package-lock.json
+    3. Runs all unit tests
+    4. Fails if:
+        - Any test fails
+        - Coverage drops below the enforced threshold
+          No code should be merged unless CI is fully green.
 
 ---
 

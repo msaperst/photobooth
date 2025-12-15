@@ -9,3 +9,5 @@ sessions/*
 
 .env
 /.coverage
+/node_modules/
+/coverage/

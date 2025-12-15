@@ -5,7 +5,7 @@ on:
   pull_request:
 
 jobs:
-  test:
+  backend-test:
     runs-on: ubuntu-latest
 
     steps:
@@ -24,3 +24,19 @@ jobs:
       - name: Run tests with coverage
         run: |
           pytest --cov=controller --cov=web --cov-fail-under=80
+  frontend-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Run frontend tests
+        run: npm run test:coverage

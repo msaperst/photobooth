@@ -21,8 +21,6 @@
         class="logo"
 />
 
-<div id="state">Loading…</div>
-
 <div class="strip-selector">
     <p class="selector-label">How many photo strips?</p>
 
@@ -34,73 +32,15 @@
     </div>
 </div>
 
-<button id="startButton" onclick="startSession()">
+<button id="startButton">
     Start Session
 </button>
 
-<script>
-    let isBusy = false;
-    let wasBusy = false;
-    let selectedStrips = 2;
-
-    function setStripSelection(strips) {
-        document.querySelectorAll(".strip-option").forEach(btn => {
-            const btnStrips = Number.parseInt(btn.dataset.strips, 10);
-            btn.classList.toggle("active", btnStrips === strips);
-        });
-        selectedStrips = strips;
-    }
-
-    function updateStripSelection(button) {
-        const strips = Number.parseInt(button.dataset.strips, 10);
-        setStripSelection(strips);
-    }
-
-    document.querySelectorAll(".strip-option").forEach(button => {
-        button.addEventListener("click", () => updateStripSelection(button));
-    });
-
-    async function fetchStatus() {
-        const response = await fetch("/status");
-        const data = await response.json();
-
-        document.getElementById("state").innerText = data.state;
-
-        wasBusy = isBusy;
-        isBusy = data.busy;
-
-        document.getElementById("startButton").disabled = isBusy;
-        document.querySelectorAll(".strip-option").forEach(btn => {
-            btn.disabled = isBusy;
-        });
-
-        // Reset strip selection when a session finishes
-        if (wasBusy && !isBusy) {
-            setStripSelection(2);
-        }
-    }
-
-    async function startSession() {
-        if (isBusy) return;
-
-        const printCount = selectedStrips / 2;
-
-        const response = await fetch("/start-session", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({ print_count: printCount })
-        });
-
-        if (!response.ok) {
-            alert("Photobooth is currently busy.");
-        }
-    }
-
-    setInterval(fetchStatus, 500);
-    fetchStatus();
-</script>
+<script
+        type="module"
+        src="{{ url_for('static', filename='app.js') }}"
+        defer
+></script>
 
 </body>
 </html>

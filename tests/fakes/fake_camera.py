@@ -8,6 +8,7 @@ class FakeCamera(Camera):
     def __init__(self, image_dir: Path):
         self.image_dir = image_dir
         self.live_view_active = False
+        self._capture_index = 0
 
     def health_check(self) -> bool:
         return True
@@ -20,8 +21,12 @@ class FakeCamera(Camera):
 
     def capture_images(self, count: int) -> List[Path]:
         images = []
-        for i in range(count):
-            path = self.image_dir / f"fake_image_{i}.jpg"
+
+        for _ in range(count):
+            path = self.image_dir / f"fake_image_{self._capture_index}.jpg"
+            self._capture_index += 1
+
             path.write_text("fake image data")
             images.append(path)
+
         return images
