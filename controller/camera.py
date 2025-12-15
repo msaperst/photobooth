@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import List
 
 
 class CameraError(Exception):
@@ -30,8 +29,6 @@ class Camera(ABC):
         pass
 
     @abstractmethod
-    def capture_images(self, count: int) -> List[Path]:
-        """
-        Capture `count` images and return paths to the captured files.
-        """
+    def capture(self, output_dir: Path) -> Path:
+        """Capture a single photo and return the saved file path."""
         pass
