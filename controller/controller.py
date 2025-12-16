@@ -254,7 +254,7 @@ class PhotoboothController:
         ).start()
 
     def _live_view_worker(self):
-        retry_interval = 2.0  # seconds
+        retry_interval = 2.0
         last_retry = 0.0
 
         while self._running:
@@ -262,10 +262,20 @@ class PhotoboothController:
 
             with self._state_lock:
                 state = self.state
+                health_level = self._health_status.level
 
-            # --- Recovery attempt when camera was previously unavailable ---
+            # ---- HARD STOP during capture ----
+            # Do NOT attempt live view or health inference while capturing
+            if state in (
+                    ControllerState.COUNTDOWN,
+                    ControllerState.CAPTURING_PHOTO,
+            ):
+                time.sleep(0.2)
+                continue
+
+            # ---- Recovery retry when unhealthy ----
             if (
-                    self._health_status.level != HealthStatus.ok().level
+                    health_level != HealthStatus.Level.OK
                     and state in (ControllerState.IDLE, ControllerState.READY_FOR_PHOTO)
                     and now - last_retry > retry_interval
             ):
@@ -274,16 +284,9 @@ class PhotoboothController:
                     self.camera.start_live_view()
                     self._mark_camera_ok()
                 except Exception:
-                    pass  # Stay unhealthy; retry later
+                    pass  # still unhealthy
 
-            # --- Only pull frames when idle or ready ---
-            if state not in (
-                    ControllerState.IDLE,
-                    ControllerState.READY_FOR_PHOTO,
-            ):
-                time.sleep(0.2)
-                continue
-
+            # ---- Normal live view polling ----
             try:
                 frame = self.camera.get_live_view_frame()
                 with self._live_view_lock:
@@ -291,20 +294,13 @@ class PhotoboothController:
                 self._mark_camera_ok()
 
             except Exception:
-                # Live view failures are EXPECTED during capture transitions
-                with self._state_lock:
-                    if self.state in (
-                            ControllerState.COUNTDOWN,
-                            ControllerState.CAPTURING_PHOTO,
-                    ):
-                        pass
-                    else:
-                        self._set_camera_error(
-                            HealthCode.CAMERA_NOT_DETECTED,
-                            "Camera not responding",
-                        )
+                # Only unexpected failures get surfaced
+                self._set_camera_error(
+                    HealthCode.CAMERA_NOT_DETECTED,
+                    "Camera not responding",
+                )
 
-            time.sleep(0.5)  # ~2 FPS
+            time.sleep(0.5)
 
     # ---------- Health inference ----------
 
@@ -314,14 +310,16 @@ class PhotoboothController:
         self._last_live_view_ok = time.monotonic()
 
     def _set_camera_error(self, code: HealthCode, message: str):
-        if self._health_status.level == HealthStatus.ok().level:
-            self._health_status = HealthStatus.error(
-                code=code,
-                message=message,
-                instructions=[
-                    "Check that the camera is powered on",
-                    "Check the USB cable",
-                    "Replace the camera battery if needed",
-                ],
-            )
-            self._last_camera_error = True
+        if self._health_status.level == HealthStatus.Level.ERROR:
+            return
+
+        self._health_status = HealthStatus.error(
+            code=code,
+            message=message,
+            instructions=[
+                "Check that the camera is powered on",
+                "Check the USB cable",
+                "Replace the camera battery if needed",
+            ],
+        )
+        self._last_camera_error = True
