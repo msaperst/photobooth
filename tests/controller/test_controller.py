@@ -208,7 +208,11 @@ def test_photo_capture_worker_sets_idle_on_capture_failure(tmp_path, monkeypatch
 
     # Health should reflect error
     health = controller.get_health()
+
     assert health.level == HealthLevel.ERROR
+    assert health.code == HealthCode.CAMERA_NOT_DETECTED
+    assert "photo 1 of 1" in health.message
+    assert "Session was cancelled" in health.message
 
 
 def test_start_live_view_worker_returns_if_already_running(tmp_path, monkeypatch):
@@ -353,3 +357,81 @@ def test_controller_never_crashes_on_camera_errors(tmp_path, monkeypatch):
     time.sleep(0.2)
 
     assert controller._running is True
+
+
+def test_capture_failure_mid_round_sets_contextual_message(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera, tmp_path)
+
+    controller.countdown_seconds = 0
+    monkeypatch.setattr(time, "sleep", lambda _s: None)
+
+    # First capture succeeds, second fails
+    call_count = {"n": 0}
+
+    def capture_side_effect(_output_dir):
+        call_count["n"] += 1
+        if call_count["n"] == 2:
+            raise RuntimeError("camera died")
+
+    monkeypatch.setattr(camera, "capture", capture_side_effect)
+
+    controller.start()
+    controller.enqueue(Command(CommandType.START_SESSION, payload={"image_count": 3}))
+    wait_for(lambda: controller.state == ControllerState.READY_FOR_PHOTO)
+
+    # Photo 1
+    controller.enqueue(Command(CommandType.TAKE_PHOTO))
+    wait_for(lambda: controller.photos_taken == 1)
+
+    # Photo 2 (fails)
+    controller.enqueue(Command(CommandType.TAKE_PHOTO))
+    wait_for(lambda: controller.state == ControllerState.IDLE)
+
+    health = controller.get_health()
+    assert health.level == HealthLevel.ERROR
+    assert "photo 2 of 3" in health.message
+    assert "Session was cancelled" in health.message
+
+
+def test_capture_success_but_live_view_restart_fails_sets_health_message(
+        tmp_path, monkeypatch
+):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera, tmp_path)
+
+    # Make everything fast and deterministic
+    controller.countdown_seconds = 0
+    monkeypatch.setattr(time, "sleep", lambda _s: None)
+
+    # Capture succeeds (use FakeCamera default behavior)
+    # Force live view restart to fail
+    def fail_start_live_view():
+        raise RuntimeError("live view restart failed")
+
+    monkeypatch.setattr(camera, "start_live_view", fail_start_live_view)
+
+    controller.start()
+    controller.enqueue(
+        Command(CommandType.START_SESSION, payload={"image_count": 1})
+    )
+
+    # Wait until ready
+    wait_for(lambda: controller.state == ControllerState.READY_FOR_PHOTO)
+
+    # Take the photo
+    controller.enqueue(Command(CommandType.TAKE_PHOTO))
+
+    # Photo should still be counted
+    wait_for(lambda: controller.photos_taken == 1)
+
+    # Health should reflect restart failure
+    health = controller.get_health()
+    assert health.level == HealthLevel.ERROR
+    assert health.code == HealthCode.CAMERA_NOT_DETECTED
+    assert (
+            "live preview could not be restarted" in health.message
+    )
+
+    # Session should still complete and return to IDLE
+    wait_for(lambda: controller.state == ControllerState.IDLE)

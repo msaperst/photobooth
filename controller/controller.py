@@ -182,13 +182,24 @@ class PhotoboothController:
             self.camera.stop_live_view()
             self.camera.capture(self.image_root)
             self._mark_camera_ok()
-        except Exception as e:
+        except Exception:
+            # Determine which photo failed (1-based index)
+            failed_photo_number = self.photos_taken + 1
+
             self._set_camera_error(
                 HealthCode.CAMERA_NOT_DETECTED,
-                "Camera error during capture",
+                (
+                    f"Camera disconnected during photo "
+                    f"{failed_photo_number} of {self.total_photos}. "
+                    f"Session was cancelled."
+                ),
             )
+
             with self._state_lock:
+                # Explicitly abort session
+                self.session_active = False
                 self.state = ControllerState.IDLE
+
             return
 
         with self._state_lock:
@@ -199,7 +210,7 @@ class PhotoboothController:
         except Exception:
             self._set_camera_error(
                 HealthCode.CAMERA_NOT_DETECTED,
-                "Camera not detected",
+                "Camera reconnected, but live preview could not be restarted",
             )
 
         with self._state_lock:

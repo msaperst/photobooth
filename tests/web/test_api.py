@@ -121,6 +121,6 @@ def test_index_page_renders(client):
 
 
 def test_health_endpoint_ok(client):
-    resp = client.get("/api/health")
+    resp = client.get("/health")
     assert resp.status_code == 200
     assert resp.json == {"level": "OK"}
