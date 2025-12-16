@@ -182,8 +182,8 @@ class PhotoboothController:
             self.camera.stop_live_view()
             self.camera.capture(self.image_root)
             self._mark_camera_ok()
+
         except Exception:
-            # Determine which photo failed (1-based index)
             failed_photo_number = self.photos_taken + 1
 
             self._set_camera_error(
@@ -196,8 +196,9 @@ class PhotoboothController:
             )
 
             with self._state_lock:
-                # Explicitly abort session
                 self.session_active = False
+                # Optional: reset numbering if desired
+                # self.photos_taken = 0
                 self.state = ControllerState.IDLE
 
             return
@@ -253,25 +254,55 @@ class PhotoboothController:
         ).start()
 
     def _live_view_worker(self):
+        retry_interval = 2.0  # seconds
+        last_retry = 0.0
+
         while self._running:
+            now = time.monotonic()
+
             with self._state_lock:
-                if self.state not in (
-                        ControllerState.IDLE,
-                        ControllerState.READY_FOR_PHOTO,
-                ):
-                    time.sleep(0.2)
-                    continue
+                state = self.state
+
+            # --- Recovery attempt when camera was previously unavailable ---
+            if (
+                    self._health_status.level != HealthStatus.ok().level
+                    and state in (ControllerState.IDLE, ControllerState.READY_FOR_PHOTO)
+                    and now - last_retry > retry_interval
+            ):
+                last_retry = now
+                try:
+                    self.camera.start_live_view()
+                    self._mark_camera_ok()
+                except Exception:
+                    pass  # Stay unhealthy; retry later
+
+            # --- Only pull frames when idle or ready ---
+            if state not in (
+                    ControllerState.IDLE,
+                    ControllerState.READY_FOR_PHOTO,
+            ):
+                time.sleep(0.2)
+                continue
 
             try:
                 frame = self.camera.get_live_view_frame()
                 with self._live_view_lock:
                     self._latest_live_view_frame = frame
                 self._mark_camera_ok()
+
             except Exception:
-                self._set_camera_error(
-                    HealthCode.CAMERA_NOT_DETECTED,
-                    "Camera not responding",
-                )
+                # Live view failures are EXPECTED during capture transitions
+                with self._state_lock:
+                    if self.state in (
+                            ControllerState.COUNTDOWN,
+                            ControllerState.CAPTURING_PHOTO,
+                    ):
+                        pass
+                    else:
+                        self._set_camera_error(
+                            HealthCode.CAMERA_NOT_DETECTED,
+                            "Camera not responding",
+                        )
 
             time.sleep(0.5)  # ~2 FPS
 
@@ -283,13 +314,14 @@ class PhotoboothController:
         self._last_live_view_ok = time.monotonic()
 
     def _set_camera_error(self, code: HealthCode, message: str):
-        self._last_camera_error = True
-        self._health_status = HealthStatus.error(
-            code=code,
-            message=message,
-            instructions=[
-                "Check that the camera is powered on",
-                "Check the USB cable",
-                "Replace the camera battery if needed",
-            ],
-        )
+        if self._health_status.level == HealthStatus.ok().level:
+            self._health_status = HealthStatus.error(
+                code=code,
+                message=message,
+                instructions=[
+                    "Check that the camera is powered on",
+                    "Check the USB cable",
+                    "Replace the camera battery if needed",
+                ],
+            )
+            self._last_camera_error = True
