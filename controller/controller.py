@@ -1,7 +1,14 @@
 """
 Photobooth controller
 
-Single authoritative owner of camera, printer, and session state.
+Single authoritative owner of camera and session state.
+
+Goals:
+- Command loop never blocks on slow camera I/O
+- Live view worker always runs (enables recovery when camera is off at boot)
+- Camera-off-at-boot -> turning camera on later recovers automatically
+- No "red flash" after capture (debounced live-view failures)
+- Specific capture-failure error messages are not overwritten by generic ones
 """
 
 import threading
@@ -14,8 +21,6 @@ from typing import Optional
 from controller.camera import Camera
 from controller.health import HealthStatus, HealthCode, HealthLevel
 
-
-# ------------------ State & Commands ------------------ #
 
 class ControllerState(Enum):
     IDLE = auto()
@@ -37,19 +42,12 @@ class Command:
         self.payload = payload or {}
 
 
-# ------------------ Controller ------------------ #
-
 class PhotoboothController:
-    """
-    Core controller loop.
+    # How long live view must be failing (while idle/ready) before surfacing an error
+    LIVE_VIEW_ERROR_AFTER = 2.5  # seconds
 
-    Design guarantees:
-    - Never blocks on slow I/O in the command loop
-    - Camera health is inferred from real interactions
-    - Live view failures do not crash the controller
-    """
-
-    LIVE_VIEW_STALE_SECONDS = 3.0  # grace period before declaring camera missing
+    # How often to attempt recovery when unhealthy (camera off/unplugged)
+    RECOVERY_ATTEMPT_INTERVAL = 2.0  # seconds
 
     def __init__(self, camera: Camera, image_root: Path):
         self._state_lock = threading.Lock()
@@ -74,22 +72,29 @@ class PhotoboothController:
 
         # Live view
         self._latest_live_view_frame: Optional[bytes] = None
-        self._last_live_view_ok: Optional[float] = None
-        self._live_view_failure_since: Optional[float] = None
         self._live_view_lock = threading.Lock()
         self._live_view_running = False
 
         # Health
+        self._health_lock = threading.Lock()
         self._health_status = HealthStatus.ok()
 
-    # ------------------ Lifecycle ------------------ #
+        # Live view failure debounce + recovery throttling
+        self._live_view_failure_since: Optional[float] = None
+        self._last_recovery_attempt: float = 0.0
+
+    # ---------- Lifecycle ----------
 
     def start(self):
         self._running = True
 
+        # Always start worker so recovery is possible even if camera is OFF at boot.
         self._start_live_view_worker()
+
+        # Best-effort initial live view start. Failure is ok; worker will recover later.
         try:
             self.camera.start_live_view()
+            self._mark_camera_ok()
         except Exception:
             self._set_camera_error(
                 HealthCode.CAMERA_NOT_DETECTED,
@@ -105,7 +110,7 @@ class PhotoboothController:
         except Exception:
             pass
 
-    # ------------------ Public API ------------------ #
+    # ---------- Public API ----------
 
     def enqueue(self, command: Command):
         self.command_queue.put(command)
@@ -125,9 +130,10 @@ class PhotoboothController:
             return self._latest_live_view_frame
 
     def get_health(self) -> HealthStatus:
-        return self._health_status
+        with self._health_lock:
+            return self._health_status
 
-    # ------------------ Controller Loop ------------------ #
+    # ---------- Controller loop ----------
 
     def _run(self):
         while self._running:
@@ -148,7 +154,7 @@ class PhotoboothController:
             if self.state == ControllerState.READY_FOR_PHOTO:
                 self._begin_photo_capture()
 
-    # ------------------ Session Flow ------------------ #
+    # ---------- Session flow ----------
 
     def _start_session(self, payload):
         with self._state_lock:
@@ -164,10 +170,7 @@ class PhotoboothController:
             self.state = ControllerState.COUNTDOWN
             self.countdown_remaining = self.countdown_seconds
 
-        threading.Thread(
-            target=self._photo_capture_worker,
-            daemon=True,
-        ).start()
+        threading.Thread(target=self._photo_capture_worker, daemon=True).start()
 
     def _photo_capture_worker(self):
         # Countdown
@@ -183,13 +186,17 @@ class PhotoboothController:
             self.state = ControllerState.CAPTURING_PHOTO
 
         try:
-            self.camera.stop_live_view()
+            # Stop preview, capture
+            try:
+                self.camera.stop_live_view()
+            except Exception:
+                pass
+
             self.camera.capture(self.image_root)
             self._mark_camera_ok()
 
         except Exception:
             failed_photo_number = self.photos_taken + 1
-
             self._set_camera_error(
                 HealthCode.CAMERA_NOT_DETECTED,
                 (
@@ -198,19 +205,19 @@ class PhotoboothController:
                     f"Session was cancelled. Please start again."
                 ),
             )
-
             with self._state_lock:
                 self.session_active = False
-                self.photos_taken = 0  # reset numbering
+                self.photos_taken = 0  # reset numbering to avoid “photo 2 of 3” confusion
                 self.state = ControllerState.IDLE
-
             return
 
         with self._state_lock:
             self.photos_taken += 1
 
+        # Restart preview (best effort). If it fails, worker will attempt recovery.
         try:
             self.camera.start_live_view()
+            self._mark_camera_ok()
         except Exception:
             self._set_camera_error(
                 HealthCode.CAMERA_NOT_DETECTED,
@@ -225,10 +232,7 @@ class PhotoboothController:
         self._finish_session()
 
     def _finish_session(self):
-        threading.Thread(
-            target=self._finish_session_worker,
-            daemon=True,
-        ).start()
+        threading.Thread(target=self._finish_session_worker, daemon=True).start()
 
     def _finish_session_worker(self):
         with self._state_lock:
@@ -243,48 +247,58 @@ class PhotoboothController:
             self.session_active = False
             self.state = ControllerState.IDLE
 
-    # ------------------ Live View ------------------ #
+    # ---------- Live view + recovery ----------
 
     def _start_live_view_worker(self):
         if self._live_view_running:
             return
-
         self._live_view_running = True
-
-        threading.Thread(
-            target=self._live_view_worker,
-            daemon=True,
-        ).start()
+        threading.Thread(target=self._live_view_worker, daemon=True).start()
 
     def _live_view_worker(self):
         while self._running:
+            now = time.monotonic()
+
             with self._state_lock:
                 state = self.state
 
-            # Only poll live view when it should actually be displayed.
+            # Only poll preview when it should be visible
             if state not in (ControllerState.IDLE, ControllerState.READY_FOR_PHOTO):
                 time.sleep(0.2)
                 continue
 
+            # --- Recovery path (fixes camera-off-at-boot -> turn on later) ---
+            with self._health_lock:
+                unhealthy = self._health_status.level == HealthLevel.ERROR
+
+            if unhealthy and (now - self._last_recovery_attempt) >= self.RECOVERY_ATTEMPT_INTERVAL:
+                self._last_recovery_attempt = now
+                try:
+                    self.camera.start_live_view()
+                    # Don’t immediately trust it, but clear the error so UI unblocks;
+                    # first good frame will confirm and keep it OK.
+                    self._mark_camera_ok()
+                    # Reset debounce since we’re attempting recovery
+                    self._live_view_failure_since = None
+                except Exception:
+                    # Still unhealthy; keep waiting
+                    pass
+
+            # --- Frame polling + debounced error (fixes post-capture red flash) ---
             try:
                 frame = self.camera.get_live_view_frame()
-
                 with self._live_view_lock:
                     self._latest_live_view_frame = frame
 
-                # Success: clear failure streak and mark camera OK
                 self._live_view_failure_since = None
                 self._mark_camera_ok()
 
             except Exception:
-                now = time.monotonic()
-
-                # Start (or continue) a failure streak
                 if self._live_view_failure_since is None:
                     self._live_view_failure_since = now
 
-                # Only surface an error if failures persist beyond the threshold.
-                if now - self._live_view_failure_since >= self.LIVE_VIEW_STALE_SECONDS:
+                # Only surface a generic error if failures persist
+                if (now - self._live_view_failure_since) >= self.LIVE_VIEW_ERROR_AFTER:
                     self._set_camera_error(
                         HealthCode.CAMERA_NOT_DETECTED,
                         "Camera not responding",
@@ -292,22 +306,23 @@ class PhotoboothController:
 
             time.sleep(0.5)  # ~2 FPS
 
-    # ------------------ Health ------------------ #
+    # ---------- Health helpers ----------
 
     def _mark_camera_ok(self):
-        self._health_status = HealthStatus.ok()
-        self._last_live_view_ok = time.monotonic()
+        with self._health_lock:
+            self._health_status = HealthStatus.ok()
 
     def _set_camera_error(self, code: HealthCode, message: str):
-        if self._health_status.level == HealthLevel.ERROR:
-            return
-
-        self._health_status = HealthStatus.error(
-            code=code,
-            message=message,
-            instructions=[
-                "Check that the camera is powered on",
-                "Check the USB cable",
-                "Replace the camera battery if needed",
-            ],
-        )
+        # Preserve the first (most specific) error; don’t overwrite with generic ones.
+        with self._health_lock:
+            if self._health_status.level == HealthLevel.ERROR:
+                return
+            self._health_status = HealthStatus.error(
+                code=code,
+                message=message,
+                instructions=[
+                    "Check that the camera is powered on",
+                    "Check the USB cable",
+                    "Replace the camera battery if needed",
+                ],
+            )
