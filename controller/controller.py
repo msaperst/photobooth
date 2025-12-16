@@ -75,6 +75,7 @@ class PhotoboothController:
         # Live view
         self._latest_live_view_frame: Optional[bytes] = None
         self._last_live_view_ok: Optional[float] = None
+        self._live_view_failure_since: Optional[float] = None
         self._live_view_lock = threading.Lock()
         self._live_view_running = False
 
@@ -259,54 +260,35 @@ class PhotoboothController:
         while self._running:
             with self._state_lock:
                 state = self.state
-                unhealthy = self._health_status.level == HealthLevel.ERROR
 
-            if unhealthy and state in (ControllerState.IDLE, ControllerState.READY_FOR_PHOTO):
-                try:
-                    self.camera.start_live_view()
-                    self._mark_camera_ok()
-                except Exception:
-                    pass  # stay unhealthy, retry later
-            # Do not poll live view during capture transitions
-            if state in (
-                    ControllerState.COUNTDOWN,
-                    ControllerState.CAPTURING_PHOTO,
-            ):
+            # Only poll live view when it should actually be displayed.
+            if state not in (ControllerState.IDLE, ControllerState.READY_FOR_PHOTO):
                 time.sleep(0.2)
                 continue
 
             try:
                 frame = self.camera.get_live_view_frame()
+
                 with self._live_view_lock:
                     self._latest_live_view_frame = frame
+
+                # Success: clear failure streak and mark camera OK
+                self._live_view_failure_since = None
                 self._mark_camera_ok()
 
             except Exception:
-                # Only surface error if NOT in a known transition
-                with self._state_lock:
-                    transitional = self.state in (
-                        ControllerState.COUNTDOWN,
-                        ControllerState.CAPTURING_PHOTO,
-                    )
+                now = time.monotonic()
 
-                if not transitional:
+                # Start (or continue) a failure streak
+                if self._live_view_failure_since is None:
+                    self._live_view_failure_since = now
+
+                # Only surface an error if failures persist beyond the threshold.
+                if now - self._live_view_failure_since >= self.LIVE_VIEW_STALE_SECONDS:
                     self._set_camera_error(
                         HealthCode.CAMERA_NOT_DETECTED,
                         "Camera not responding",
                     )
-
-            # Detect stale live view while idle
-            now = time.monotonic()
-            if (
-                    self._health_status.level == HealthLevel.OK
-                    and self._last_live_view_ok is not None
-                    and now - self._last_live_view_ok > self.LIVE_VIEW_STALE_SECONDS
-                    and state in (ControllerState.IDLE, ControllerState.READY_FOR_PHOTO)
-            ):
-                self._set_camera_error(
-                    HealthCode.CAMERA_NOT_DETECTED,
-                    "Camera not detected",
-                )
 
             time.sleep(0.5)  # ~2 FPS
 
