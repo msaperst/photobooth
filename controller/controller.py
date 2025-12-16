@@ -86,10 +86,9 @@ class PhotoboothController:
     def start(self):
         self._running = True
 
-        # Try to start live view once; failures are recoverable
+        self._start_live_view_worker()
         try:
             self.camera.start_live_view()
-            self._start_live_view_worker()
         except Exception:
             self._set_camera_error(
                 HealthCode.CAMERA_NOT_DETECTED,
@@ -260,7 +259,14 @@ class PhotoboothController:
         while self._running:
             with self._state_lock:
                 state = self.state
+                unhealthy = self._health_status.level == HealthLevel.ERROR
 
+            if unhealthy and state in (ControllerState.IDLE, ControllerState.READY_FOR_PHOTO):
+                try:
+                    self.camera.start_live_view()
+                    self._mark_camera_ok()
+                except Exception:
+                    pass  # stay unhealthy, retry later
             # Do not poll live view during capture transitions
             if state in (
                     ControllerState.COUNTDOWN,
