@@ -12,7 +12,7 @@ from queue import Queue, Empty
 from typing import Optional
 
 from controller.camera import Camera
-from controller.health import HealthStatus, HealthCode
+from controller.health import HealthStatus, HealthCode, HealthLevel
 
 
 class ControllerState(Enum):
@@ -275,7 +275,7 @@ class PhotoboothController:
 
             # ---- Recovery retry when unhealthy ----
             if (
-                    health_level != HealthStatus.Level.OK
+                    health_level != HealthStatus.OK
                     and state in (ControllerState.IDLE, ControllerState.READY_FOR_PHOTO)
                     and now - last_retry > retry_interval
             ):
@@ -310,7 +310,7 @@ class PhotoboothController:
         self._last_live_view_ok = time.monotonic()
 
     def _set_camera_error(self, code: HealthCode, message: str):
-        if self._health_status.level == HealthStatus.Level.ERROR:
+        if self._health_status.level == HealthLevel.ERROR:
             return
 
         self._health_status = HealthStatus.error(
