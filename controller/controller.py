@@ -11,6 +11,7 @@ from pathlib import Path
 from queue import Queue, Empty
 
 from controller.camera import Camera
+from controller.health import HealthStatus
 
 
 class ControllerState(Enum):
@@ -54,6 +55,8 @@ class PhotoboothController:
         self._live_view_lock = threading.Lock()
         self._live_view_running = False
 
+        self._health_status = HealthStatus.ok()
+
     def start(self):
         self._running = True
         if self.camera.health_check():
@@ -84,6 +87,15 @@ class PhotoboothController:
     def get_live_view_frame(self) -> bytes | None:
         with self._live_view_lock:
             return self._latest_live_view_frame
+
+    def get_health(self) -> HealthStatus:
+        return self._health_status
+
+    def _set_health(self, status: HealthStatus):
+        self._health_status = status
+
+    def _clear_health(self):
+        self._health_status = HealthStatus.ok()
 
     def _run(self):
         while self._running:

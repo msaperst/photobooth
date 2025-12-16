@@ -117,3 +117,9 @@ def test_index_page_renders(client):
     response = client.get("/")
     assert response.status_code == 200
     assert response.content_type.startswith("text/html")
+
+
+def test_health_endpoint_ok(client):
+    resp = client.get("/api/health")
+    assert resp.status_code == 200
+    assert resp.json == {"level": "OK"}

@@ -68,3 +68,8 @@ def live_view():
     if not frame:
         return "", 204
     return Response(frame, mimetype="image/jpeg")
+
+
+@app.route("/api/health", methods=["GET"])
+def health():
+    return jsonify(controller.get_health().to_dict())
