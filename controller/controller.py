@@ -11,7 +11,7 @@ from pathlib import Path
 from queue import Queue, Empty
 
 from controller.camera import Camera
-from controller.health import HealthStatus
+from controller.health import HealthStatus, HealthCode
 
 
 class ControllerState(Enum):
@@ -35,7 +35,7 @@ class Command:
 
 
 class PhotoboothController:
-    def __init__(self, camera: Camera, image_root: Path):
+    def __init__(self, camera: Camera, image_root: Path, camera_health_interval: float = 1.0):
         self._state_lock = threading.Lock()
         self.total_photos = 3
         self.photos_taken = 0
@@ -56,10 +56,14 @@ class PhotoboothController:
         self._live_view_running = False
 
         self._health_status = HealthStatus.ok()
+        self._camera_health_interval = camera_health_interval
+        self._last_camera_check = 0.0
+        self._camera_present = None
 
     def start(self):
         self._running = True
         if self.camera.health_check():
+            self._camera_present = True
             self.camera.start_live_view()
             self._start_live_view_worker()
         self._thread.start()
@@ -97,8 +101,61 @@ class PhotoboothController:
     def _clear_health(self):
         self._health_status = HealthStatus.ok()
 
+    def _check_camera_health(self):
+        now = time.monotonic()
+        if now - self._last_camera_check < self._camera_health_interval:
+            return
+
+        self._last_camera_check = now
+
+        try:
+            present = self.camera.health_check()
+        except Exception:
+            present = False
+
+        # First observation
+        if self._camera_present is None:
+            self._camera_present = present
+            if not present:
+                self._set_health(
+                    HealthStatus.error(
+                        code=HealthCode.CAMERA_NOT_DETECTED,
+                        message="Camera not detected",
+                        instructions=[
+                            "Turn the camera on",
+                            "Check the USB cable",
+                            "Replace the camera battery if needed",
+                        ],
+                    )
+                )
+            return
+
+        # Transition: PRESENT -> NOT PRESENT
+        if self._camera_present and not present:
+            self._camera_present = False
+            self._set_health(
+                HealthStatus.error(
+                    code=HealthCode.CAMERA_NOT_DETECTED,
+                    message="Camera not detected",
+                    instructions=[
+                        "Turn the camera on",
+                        "Check the USB cable",
+                        "Replace the camera battery if needed",
+                    ],
+                )
+            )
+            return
+
+        # Transition: NOT PRESENT -> PRESENT
+        if not self._camera_present and present:
+            self._camera_present = True
+            self._clear_health()
+            return
+
     def _run(self):
         while self._running:
+            self._check_camera_health()
+
             try:
                 command = self.command_queue.get(timeout=0.1)
                 self._handle_command(command)
