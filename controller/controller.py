@@ -73,6 +73,7 @@ class PhotoboothController:
         self._last_live_view_ok: Optional[float] = None
         self._live_view_lock = threading.Lock()
         self._live_view_running = False
+        self._live_view_active = False
 
         # Health
         self._health_status = HealthStatus.ok()
@@ -83,10 +84,16 @@ class PhotoboothController:
     def start(self):
         self._running = True
 
-        # Start live view if possible, but do not fail hard
+        # Always start the live view worker so it can recover when the camera
+        # becomes available later (e.g., camera off at boot).
+        self._start_live_view_worker()
+
+        # Best-effort attempt to start live view immediately.
         try:
             self.camera.start_live_view()
-            self._start_live_view_worker()
+            with self._state_lock:
+                self._live_view_active = True
+            self._mark_camera_ok()
         except Exception:
             self._set_camera_error(
                 HealthCode.CAMERA_NOT_DETECTED,
@@ -178,8 +185,12 @@ class PhotoboothController:
         with self._state_lock:
             self.state = ControllerState.CAPTURING_PHOTO
 
+        # Stop live view (expected) and capture
         try:
             self.camera.stop_live_view()
+            with self._state_lock:
+                self._live_view_active = False
+
             self.camera.capture(self.image_root)
             self._mark_camera_ok()
 
@@ -206,9 +217,16 @@ class PhotoboothController:
         with self._state_lock:
             self.photos_taken += 1
 
+        # Try to restart live view (best effort). If this fails, we want the worker
+        # thread to keep retrying while idle.
         try:
             self.camera.start_live_view()
+            with self._state_lock:
+                self._live_view_active = True
+            self._mark_camera_ok()
         except Exception:
+            with self._state_lock:
+                self._live_view_active = False
             self._set_camera_error(
                 HealthCode.CAMERA_NOT_DETECTED,
                 "Camera reconnected, but live preview could not be restarted",
@@ -263,29 +281,34 @@ class PhotoboothController:
             with self._state_lock:
                 state = self.state
                 health_level = self._health_status.level
+                live_view_active = self._live_view_active
 
-            # --- HARD STOP during capture-related states ---
-            if state in (
-                    ControllerState.COUNTDOWN,
-                    ControllerState.CAPTURING_PHOTO,
-            ):
+            # Do not do live view work during capture transitions.
+            if state in (ControllerState.COUNTDOWN, ControllerState.CAPTURING_PHOTO):
                 time.sleep(0.2)
                 continue
 
-            # --- Recovery retry when unhealthy ---
-            if (
-                    health_level == HealthLevel.ERROR
-                    and state in (ControllerState.IDLE, ControllerState.READY_FOR_PHOTO)
-                    and now - last_retry > retry_interval
-            ):
-                last_retry = now
-                try:
-                    self.camera.start_live_view()
-                    self._mark_camera_ok()
-                except Exception:
-                    pass  # remain unhealthy, retry later
+            # If live view isn't active, don't fetch frames. Just try to start it
+            # (throttled) when idle/ready and unhealthy.
+            if not live_view_active:
+                if (
+                        health_level == HealthLevel.ERROR
+                        and state in (ControllerState.IDLE, ControllerState.READY_FOR_PHOTO)
+                        and now - last_retry > retry_interval
+                ):
+                    last_retry = now
+                    try:
+                        self.camera.start_live_view()
+                        with self._state_lock:
+                            self._live_view_active = True
+                        self._mark_camera_ok()
+                    except Exception:
+                        pass
 
-            # --- Normal live-view polling ---
+                time.sleep(0.5)
+                continue
+
+            # Normal live view polling when active.
             try:
                 frame = self.camera.get_live_view_frame()
                 with self._live_view_lock:
@@ -293,7 +316,10 @@ class PhotoboothController:
                 self._mark_camera_ok()
 
             except Exception:
-                # Only unexpected failures should surface
+                # Live view was expected to be active but failed.
+                with self._state_lock:
+                    self._live_view_active = False
+
                 self._set_camera_error(
                     HealthCode.CAMERA_NOT_DETECTED,
                     "Camera not responding",
@@ -321,4 +347,4 @@ class PhotoboothController:
                 "Replace the camera battery if needed",
             ],
         )
-        self._last_camera_error = True
+        self._last_camera_error = Exception(message)
