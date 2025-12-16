@@ -315,11 +315,20 @@ class PhotoboothController:
                     self._latest_live_view_frame = frame
                 self._mark_camera_ok()
 
+
             except Exception:
-                # Live view was expected to be active but failed.
                 with self._state_lock:
                     self._live_view_active = False
+                    last_ok = self._last_live_view_ok
 
+                # Allow a grace window after capture / restart
+                if last_ok is not None:
+                    if time.monotonic() - last_ok < self.LIVE_VIEW_OK_WINDOW:
+                        # Expected downtime — do NOT surface an error
+                        time.sleep(0.2)
+                        continue
+
+                # Past grace window → real error
                 self._set_camera_error(
                     HealthCode.CAMERA_NOT_DETECTED,
                     "Camera not responding",
