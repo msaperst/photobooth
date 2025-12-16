@@ -7,8 +7,15 @@ from controller.controller import (
     CommandType,
     ControllerState,
 )
+from controller.health import HealthLevel, HealthCode
 from tests.fakes.fake_camera import FakeCamera
 from tests.helpers import wait_for
+
+
+def force_health_check(controller):
+    # Force the next health check to run immediately
+    controller._last_camera_check = 0.0
+    controller._check_camera_health()
 
 
 def test_manual_photo_progression(tmp_path):
@@ -263,3 +270,48 @@ def test_finish_session_worker_transitions_states(tmp_path, monkeypatch):
 
     # Session is marked inactive
     assert controller.session_active is False
+
+
+def test_camera_health_check_exception_sets_error(tmp_path):
+    camera = FakeCamera(tmp_path)
+
+    def boom():
+        raise RuntimeError("USB error")
+
+    camera.health_check = boom  # simulate unexpected failure
+
+    controller = PhotoboothController(
+        camera,
+        tmp_path,
+        camera_health_interval=0.0,
+    )
+
+    # First observation
+    force_health_check(controller)
+
+    health = controller.get_health()
+    assert health.level == HealthLevel.ERROR
+    assert health.code == HealthCode.CAMERA_NOT_DETECTED
+
+
+def test_camera_disconnect_sets_health_error(tmp_path):
+    camera = FakeCamera(tmp_path)
+    camera.connected = True
+
+    controller = PhotoboothController(
+        camera,
+        tmp_path,
+        camera_health_interval=0.0,
+    )
+
+    # First observation: camera present
+    force_health_check(controller)
+    assert controller.get_health().level == HealthLevel.OK
+
+    # Simulate disconnect
+    camera.connected = False
+    force_health_check(controller)
+
+    health = controller.get_health()
+    assert health.level == HealthLevel.ERROR
+    assert health.code == HealthCode.CAMERA_NOT_DETECTED
