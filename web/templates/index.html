@@ -40,6 +40,13 @@
     Start Session
 </button>
 
+<div id="healthOverlay" class="health-overlay hidden">
+    <div class="health-content">
+        <h1 id="healthMessage"></h1>
+        <ul id="healthInstructions"></ul>
+    </div>
+</div>
+
 <script
         type="module"
         src="{{ url_for('static', filename='app.js') }}"

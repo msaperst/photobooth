@@ -22,17 +22,24 @@ def create_app(camera=None):
     controller.start()
     app.controller = controller
 
-    @app.route("/api/health")
-    def health():
-        return app.controller.get_health().to_dict()
-
     @app.route("/", methods=["GET"])
     def index():
         return render_template("index.html")
 
+    @app.route("/health", methods=["GET"])
+    def health():
+        return jsonify(controller.get_health().to_dict())
+
     @app.route("/status", methods=["GET"])
     def status():
         return jsonify(app.controller.get_status())
+
+    @app.route("/live-view", methods=["GET"])
+    def live_view():
+        frame = app.controller.get_live_view_frame()
+        if not frame:
+            return "", 204
+        return Response(frame, mimetype="image/jpeg")
 
     @app.route("/start-session", methods=["POST"])
     def start_session():
@@ -63,12 +70,5 @@ def create_app(camera=None):
         )
 
         return jsonify({"ok": True})
-
-    @app.route("/live-view", methods=["GET"])
-    def live_view():
-        frame = app.controller.get_live_view_frame()
-        if not frame:
-            return "", 204
-        return Response(frame, mimetype="image/jpeg")
 
     return app
