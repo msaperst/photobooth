@@ -9,6 +9,7 @@ import time
 from enum import Enum, auto
 from pathlib import Path
 from queue import Queue, Empty
+from typing import Optional
 
 from controller.camera import Camera
 from controller.health import HealthStatus, HealthCode
@@ -35,8 +36,21 @@ class Command:
 
 
 class PhotoboothController:
-    def __init__(self, camera: Camera, image_root: Path, camera_health_interval: float = 1.0):
+    """
+    Core controller loop.
+
+    Design guarantees:
+    - Never blocks on slow I/O in the command loop
+    - Camera health is inferred from real interactions
+    - Live view failures do not crash the controller
+    """
+
+    LIVE_VIEW_OK_WINDOW = 2.0  # seconds
+
+    def __init__(self, camera: Camera, image_root: Path):
         self._state_lock = threading.Lock()
+
+        # Session state
         self.total_photos = 3
         self.photos_taken = 0
         self.session_active = False
@@ -44,28 +58,41 @@ class PhotoboothController:
         self.countdown_seconds = 3
         self.countdown_remaining = 0
 
+        # Camera + storage
         self.camera = camera
         self.image_root = image_root
+
+        # Controller state
         self.state = ControllerState.IDLE
         self.command_queue = Queue()
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._running = False
 
-        self._latest_live_view_frame: bytes | None = None
+        # Live view
+        self._latest_live_view_frame: Optional[bytes] = None
+        self._last_live_view_ok: Optional[float] = None
         self._live_view_lock = threading.Lock()
         self._live_view_running = False
 
+        # Health
         self._health_status = HealthStatus.ok()
-        self._camera_health_interval = camera_health_interval
-        self._last_camera_check = 0.0
-        self._camera_present = None
+        self._last_camera_error: Optional[Exception] = None
+
+    # ---------- Lifecycle ----------
 
     def start(self):
         self._running = True
-        if self.camera.health_check():
-            self._camera_present = True
+
+        # Start live view if possible, but do not fail hard
+        try:
             self.camera.start_live_view()
             self._start_live_view_worker()
+        except Exception:
+            self._set_camera_error(
+                HealthCode.CAMERA_NOT_DETECTED,
+                "Camera not detected",
+            )
+
         self._thread.start()
 
     def stop(self):
@@ -74,6 +101,8 @@ class PhotoboothController:
             self.camera.stop_live_view()
         except Exception:
             pass
+
+    # ---------- Public API ----------
 
     def enqueue(self, command: Command):
         self.command_queue.put(command)
@@ -88,74 +117,17 @@ class PhotoboothController:
                 "countdown_remaining": self.countdown_remaining,
             }
 
-    def get_live_view_frame(self) -> bytes | None:
+    def get_live_view_frame(self) -> Optional[bytes]:
         with self._live_view_lock:
             return self._latest_live_view_frame
 
     def get_health(self) -> HealthStatus:
         return self._health_status
 
-    def _set_health(self, status: HealthStatus):
-        self._health_status = status
-
-    def _clear_health(self):
-        self._health_status = HealthStatus.ok()
-
-    def _check_camera_health(self):
-        now = time.monotonic()
-        if now - self._last_camera_check < self._camera_health_interval:
-            return
-
-        self._last_camera_check = now
-
-        try:
-            present = self.camera.health_check()
-        except Exception:
-            present = False
-
-        # First observation
-        if self._camera_present is None:
-            self._camera_present = present
-            if not present:
-                self._set_health(
-                    HealthStatus.error(
-                        code=HealthCode.CAMERA_NOT_DETECTED,
-                        message="Camera not detected",
-                        instructions=[
-                            "Turn the camera on",
-                            "Check the USB cable",
-                            "Replace the camera battery if needed",
-                        ],
-                    )
-                )
-            return
-
-        # Transition: PRESENT -> NOT PRESENT
-        if self._camera_present and not present:
-            self._camera_present = False
-            self._set_health(
-                HealthStatus.error(
-                    code=HealthCode.CAMERA_NOT_DETECTED,
-                    message="Camera not detected",
-                    instructions=[
-                        "Turn the camera on",
-                        "Check the USB cable",
-                        "Replace the camera battery if needed",
-                    ],
-                )
-            )
-            return
-
-        # Transition: NOT PRESENT -> PRESENT
-        if not self._camera_present and present:
-            self._camera_present = True
-            self._clear_health()
-            return
+    # ---------- Controller loop ----------
 
     def _run(self):
         while self._running:
-            self._check_camera_health()
-
             try:
                 command = self.command_queue.get(timeout=0.1)
                 self._handle_command(command)
@@ -166,20 +138,19 @@ class PhotoboothController:
 
     def _handle_command(self, command: Command):
         if command.command_type == CommandType.START_SESSION:
-            # with self._state_lock:
             if self.state == ControllerState.IDLE:
                 self._start_session(command.payload)
 
         elif command.command_type == CommandType.TAKE_PHOTO:
-            # with self._state_lock:
             if self.state == ControllerState.READY_FOR_PHOTO:
                 self._begin_photo_capture()
+
+    # ---------- Session flow ----------
 
     def _start_session(self, payload):
         self.session_active = True
         self.photos_taken = 0
         self.total_photos = payload.get("image_count", 3)
-
         self.state = ControllerState.READY_FOR_PHOTO
 
     def _begin_photo_capture(self):
@@ -195,6 +166,7 @@ class PhotoboothController:
         ).start()
 
     def _photo_capture_worker(self):
+        # Countdown
         while True:
             with self._state_lock:
                 if self.countdown_remaining <= 0:
@@ -205,19 +177,32 @@ class PhotoboothController:
 
         with self._state_lock:
             self.state = ControllerState.CAPTURING_PHOTO
-            self.camera.stop_live_view()
 
         try:
+            self.camera.stop_live_view()
             self.camera.capture(self.image_root)
+            self._mark_camera_ok()
         except Exception as e:
+            self._set_camera_error(
+                HealthCode.CAMERA_NOT_DETECTED,
+                "Camera error during capture",
+            )
             with self._state_lock:
-                print(f"Camera capture failed: {repr(e)}")
                 self.state = ControllerState.IDLE
             return
 
         with self._state_lock:
             self.photos_taken += 1
+
+        try:
             self.camera.start_live_view()
+        except Exception:
+            self._set_camera_error(
+                HealthCode.CAMERA_NOT_DETECTED,
+                "Camera not detected",
+            )
+
+        with self._state_lock:
             if self.photos_taken < self.total_photos:
                 self.state = ControllerState.READY_FOR_PHOTO
                 return
@@ -242,6 +227,8 @@ class PhotoboothController:
         with self._state_lock:
             self.session_active = False
             self.state = ControllerState.IDLE
+
+    # ---------- Live view ----------
 
     def _start_live_view_worker(self):
         if self._live_view_running:
@@ -268,8 +255,30 @@ class PhotoboothController:
                 frame = self.camera.get_live_view_frame()
                 with self._live_view_lock:
                     self._latest_live_view_frame = frame
+                self._mark_camera_ok()
             except Exception:
-                pass
+                self._set_camera_error(
+                    HealthCode.CAMERA_NOT_DETECTED,
+                    "Camera not responding",
+                )
 
-            # 🔑 CRITICAL: throttle
-            time.sleep(0.5)  # ~2 FPS, realistic for Nikon
+            time.sleep(0.5)  # ~2 FPS
+
+    # ---------- Health inference ----------
+
+    def _mark_camera_ok(self):
+        self._last_camera_error = None
+        self._health_status = HealthStatus.ok()
+        self._last_live_view_ok = time.monotonic()
+
+    def _set_camera_error(self, code: HealthCode, message: str):
+        self._last_camera_error = True
+        self._health_status = HealthStatus.error(
+            code=code,
+            message=message,
+            instructions=[
+                "Check that the camera is powered on",
+                "Check the USB cable",
+                "Replace the camera battery if needed",
+            ],
+        )

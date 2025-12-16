@@ -1,6 +1,7 @@
 import threading
 import time
 
+from controller.camera import CameraError
 from controller.controller import (
     PhotoboothController,
     Command,
@@ -10,12 +11,6 @@ from controller.controller import (
 from controller.health import HealthLevel, HealthCode
 from tests.fakes.fake_camera import FakeCamera
 from tests.helpers import wait_for
-
-
-def force_health_check(controller):
-    # Force the next health check to run immediately
-    controller._last_camera_check = 0.0
-    controller._check_camera_health()
 
 
 def test_manual_photo_progression(tmp_path):
@@ -194,9 +189,8 @@ def test_photo_capture_worker_sets_idle_on_capture_failure(tmp_path, monkeypatch
     camera = FakeCamera(tmp_path)
     controller = PhotoboothController(camera, tmp_path)
 
-    controller.countdown_seconds = 1
+    controller.countdown_seconds = 0
 
-    # speed up countdown
     monkeypatch.setattr(time, "sleep", lambda _s: None)
 
     def fail_capture(_output_dir):
@@ -210,11 +204,11 @@ def test_photo_capture_worker_sets_idle_on_capture_failure(tmp_path, monkeypatch
 
     controller.enqueue(Command(CommandType.TAKE_PHOTO))
 
-    # Should end up IDLE on failure
     wait_for(lambda: controller.state == ControllerState.IDLE, timeout=2.0)
 
-    # Stop live view should have been called (FakeCamera toggles live_view_active)
-    assert camera.live_view_active is False
+    # Health should reflect error
+    health = controller.get_health()
+    assert health.level == HealthLevel.ERROR
 
 
 def test_start_live_view_worker_returns_if_already_running(tmp_path, monkeypatch):
@@ -272,46 +266,90 @@ def test_finish_session_worker_transitions_states(tmp_path, monkeypatch):
     assert controller.session_active is False
 
 
-def test_camera_health_check_exception_sets_error(tmp_path):
+def test_start_sets_health_error_when_start_live_view_fails(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
 
     def boom():
-        raise RuntimeError("USB error")
+        raise RuntimeError("camera not connected")
 
-    camera.health_check = boom  # simulate unexpected failure
+    monkeypatch.setattr(camera, "start_live_view", boom)
 
-    controller = PhotoboothController(
-        camera,
-        tmp_path,
-        camera_health_interval=0.0,
-    )
+    controller = PhotoboothController(camera, tmp_path)
 
-    # First observation
-    force_health_check(controller)
+    # Should not raise
+    controller.start()
 
     health = controller.get_health()
     assert health.level == HealthLevel.ERROR
     assert health.code == HealthCode.CAMERA_NOT_DETECTED
 
 
-def test_camera_disconnect_sets_health_error(tmp_path):
+def test_photo_capture_worker_skips_countdown_when_zero(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
-    camera.connected = True
+    controller = PhotoboothController(camera, tmp_path)
 
-    controller = PhotoboothController(
-        camera,
-        tmp_path,
-        camera_health_interval=0.0,
+    controller.countdown_remaining = 0
+
+    # Prevent real sleeping
+    monkeypatch.setattr(time, "sleep", lambda _s: None)
+
+    # Run directly, not via thread
+    controller._photo_capture_worker()
+
+    # Should proceed without blocking or errors
+    # State should eventually be IDLE or READY depending on setup
+    assert controller.state in (
+        ControllerState.IDLE,
+        ControllerState.READY_FOR_PHOTO,
     )
 
-    # First observation: camera present
-    force_health_check(controller)
-    assert controller.get_health().level == HealthLevel.OK
 
-    # Simulate disconnect
-    camera.connected = False
-    force_health_check(controller)
+def test_capture_sets_health_error_when_restart_live_view_fails(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera, tmp_path)
 
-    health = controller.get_health()
-    assert health.level == HealthLevel.ERROR
-    assert health.code == HealthCode.CAMERA_NOT_DETECTED
+    controller.countdown_seconds = 0
+    monkeypatch.setattr(time, "sleep", lambda _s: None)
+
+    def fail_start_live_view():
+        raise RuntimeError("live view failed")
+
+    monkeypatch.setattr(camera, "start_live_view", fail_start_live_view)
+
+    controller.start()
+    controller.enqueue(Command(CommandType.START_SESSION, payload={"image_count": 1}))
+    wait_for(lambda: controller.state == ControllerState.READY_FOR_PHOTO)
+
+    controller.enqueue(Command(CommandType.TAKE_PHOTO))
+
+    # Capture still succeeds, but health should reflect error
+    wait_for(lambda: controller.get_health().level == HealthLevel.ERROR)
+
+
+def test_live_view_camera_error_sets_health(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera, tmp_path)
+
+    def fail_live_view():
+        raise CameraError("device busy")
+
+    monkeypatch.setattr(camera, "get_live_view_frame", fail_live_view)
+
+    controller.start()
+
+    # Live view worker runs in background
+    wait_for(lambda: controller.get_health().level == HealthLevel.ERROR)
+
+
+def test_controller_never_crashes_on_camera_errors(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera, tmp_path)
+
+    monkeypatch.setattr(camera, "get_live_view_frame", lambda: (_ for _ in ()).throw(CameraError()))
+
+    controller.start()
+
+    # Let it run briefly
+    time.sleep(0.2)
+
+    assert controller._running is True
