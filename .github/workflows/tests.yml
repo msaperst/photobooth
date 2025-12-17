@@ -23,6 +23,7 @@ jobs:
 
       - name: Run tests with coverage
         run: |
+          mkdir sessions
           pytest --cov=controller --cov=web --cov-fail-under=80
   frontend-test:
     runs-on: ubuntu-latest
