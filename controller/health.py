@@ -17,6 +17,12 @@ class HealthCode(Enum):
     UNKNOWN_ERROR = auto()
 
 
+class HealthSource(Enum):
+    LIVE_VIEW = auto()
+    CAPTURE = auto()
+    PROCESSING = auto()
+
+
 @dataclass(frozen=True)
 class HealthStatus:
     level: HealthLevel

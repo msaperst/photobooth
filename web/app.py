@@ -10,7 +10,11 @@ from controller.gphoto_camera import GPhotoCamera
 
 
 def create_app(camera=None):
-    app = Flask(__name__)
+    app = Flask(
+        __name__,
+        static_folder="../sessions",
+        static_url_path="/sessions",
+    )
 
     if camera is None:
         camera = GPhotoCamera()

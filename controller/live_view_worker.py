@@ -2,7 +2,7 @@ import threading
 import time
 from typing import Optional, TYPE_CHECKING
 
-from controller.health import HealthCode
+from controller.health import HealthCode, HealthSource
 
 if TYPE_CHECKING:  # pragma: no cover
     from controller.controller import PhotoboothController, ControllerState
@@ -58,7 +58,9 @@ class LiveViewWorker:
                     self._controller.camera.start_live_view()
                     # Don’t immediately trust it, but clear the error so UI unblocks;
                     # first good frame will confirm and keep it OK.
-                    self._controller._mark_camera_ok()
+                    # Only auto-clear errors that live view set itself.
+                    if self._controller._get_health_source() in (None, HealthSource.LIVE_VIEW):
+                        self._controller._mark_camera_ok()
                     # Reset debounce since we’re attempting recovery
                     self._live_view_failure_since = None
                 except Exception:
@@ -71,7 +73,9 @@ class LiveViewWorker:
                 self._controller._set_latest_live_view_frame(frame)
 
                 self._live_view_failure_since = None
-                self._controller._mark_camera_ok()
+                # Only auto-clear errors that live view set itself.
+                if self._controller._get_health_source() in (None, "live_view"):
+                    self._controller._mark_camera_ok()
 
             except Exception:
                 if self._live_view_failure_since is None:
@@ -82,6 +86,7 @@ class LiveViewWorker:
                     self._controller._set_camera_error(
                         HealthCode.CAMERA_NOT_DETECTED,
                         "Camera not responding",
+                        source=HealthSource.LIVE_VIEW,
                     )
 
             time.sleep(0.5)  # ~2 FPS

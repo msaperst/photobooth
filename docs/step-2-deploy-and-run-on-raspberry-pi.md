@@ -9,5 +9,6 @@ launch flask
 
 ```bash
 source .venv/bin/activate
+python -m pip install -r requirements.txt
 flask --app web.app run --host=0.0.0.0 --port=5000
 ```

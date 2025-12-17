@@ -18,7 +18,7 @@ from queue import Queue, Empty
 from typing import Optional
 
 from controller.camera import Camera
-from controller.health import HealthStatus, HealthCode, HealthLevel
+from controller.health import HealthStatus, HealthCode, HealthLevel, HealthSource
 from controller.live_view_worker import LiveViewWorker
 from controller.session_flow import SessionFlow
 
@@ -64,7 +64,11 @@ class PhotoboothController:
         # Camera + storage
         self.camera = camera
         self.image_root = image_root
+        self.sessions_root = image_root / "sessions"
+        self.sessions_root.mkdir(exist_ok=True)
+        self._session_storage = None
         self._captured_image_paths = []
+        self.strip_logo_path = Path(__file__).parent.parent / "web/static/logo.png"
 
         # Controller loop
         self.state = ControllerState.IDLE
@@ -80,6 +84,7 @@ class PhotoboothController:
         # Health
         self._health_lock = threading.Lock()
         self._health_status = HealthStatus.ok()
+        self._health_source: Optional[HealthSource] = None
 
         # Workers (internal)
         self._live_view_worker = LiveViewWorker(controller=self)
@@ -101,6 +106,7 @@ class PhotoboothController:
             self._set_camera_error(
                 HealthCode.CAMERA_NOT_DETECTED,
                 "Camera not detected",
+                source=HealthSource.LIVE_VIEW,
             )
 
         self._thread.start()
@@ -197,15 +203,20 @@ class PhotoboothController:
 
     # ---------- Health helpers ----------
 
+    def _get_health_source(self) -> Optional[HealthSource]:
+        with self._health_lock:
+            return self._health_source
+
     def _mark_camera_ok(self):
         with self._health_lock:
+            self._health_source = None
             self._health_status = HealthStatus.ok()
 
-    def _set_camera_error(self, code: HealthCode, message: str):
-        # Preserve the first (most specific) error; don’t overwrite with generic ones.
+    def _set_camera_error(self, code: HealthCode, message: str, *, source: HealthSource):
         with self._health_lock:
             if self._health_status.level == HealthLevel.ERROR:
                 return
+            self._health_source = source
             self._health_status = HealthStatus.error(
                 code=code,
                 message=message,
@@ -220,6 +231,7 @@ class PhotoboothController:
         with self._health_lock:
             if self._health_status.level == HealthLevel.ERROR:
                 return
+            self._health_source = HealthSource.PROCESSING
             self._health_status = HealthStatus.error(
                 code=HealthCode.STRIP_CREATION_FAILED,
                 message=message,
