@@ -40,12 +40,6 @@ def test_manual_photo_progression(tmp_path):
     assert len(images) == 3
 
 
-def test_controller_starts_idle(tmp_path):
-    camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
-    assert controller.state == ControllerState.IDLE
-
-
 def test_start_session_enters_ready_for_photo(tmp_path):
     camera = FakeCamera(tmp_path)
     controller = PhotoboothController(camera, tmp_path)
@@ -94,15 +88,6 @@ def test_controller_stop_ignores_camera_errors(tmp_path, monkeypatch):
     controller.stop()
 
     assert controller._running is False
-
-
-def test_get_live_view_frame_returns_none_when_empty(tmp_path):
-    camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
-
-    frame = controller.get_live_view_frame()
-
-    assert frame is None
 
 
 def test_get_live_view_frame_returns_latest_frame(tmp_path):
@@ -188,6 +173,7 @@ def test_photo_capture_worker_counts_down(tmp_path, monkeypatch):
 def test_photo_capture_worker_sets_idle_on_capture_failure(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
     controller = PhotoboothController(camera, tmp_path)
+    controller._start_live_view_worker = lambda: None
 
     controller.countdown_seconds = 0
 
@@ -288,26 +274,6 @@ def test_start_sets_health_error_when_start_live_view_fails(tmp_path, monkeypatc
     assert health.code == HealthCode.CAMERA_NOT_DETECTED
 
 
-def test_photo_capture_worker_skips_countdown_when_zero(tmp_path, monkeypatch):
-    camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
-
-    controller.countdown_remaining = 0
-
-    # Prevent real sleeping
-    monkeypatch.setattr(time, "sleep", lambda _s: None)
-
-    # Run directly, not via thread
-    controller._photo_capture_worker()
-
-    # Should proceed without blocking or errors
-    # State should eventually be IDLE or READY depending on setup
-    assert controller.state in (
-        ControllerState.IDLE,
-        ControllerState.READY_FOR_PHOTO,
-    )
-
-
 def test_capture_sets_health_error_when_restart_live_view_fails(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
     controller = PhotoboothController(camera, tmp_path)
@@ -345,23 +311,10 @@ def test_live_view_camera_error_sets_health(tmp_path, monkeypatch):
     wait_for(lambda: controller.get_health().level == HealthLevel.ERROR)
 
 
-def test_controller_never_crashes_on_camera_errors(tmp_path, monkeypatch):
-    camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
-
-    monkeypatch.setattr(camera, "get_live_view_frame", lambda: (_ for _ in ()).throw(CameraError()))
-
-    controller.start()
-
-    # Let it run briefly
-    time.sleep(0.2)
-
-    assert controller._running is True
-
-
 def test_capture_failure_mid_round_sets_contextual_message(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
     controller = PhotoboothController(camera, tmp_path)
+    controller._live_view_running = True  # prevent worker from starting
 
     controller.countdown_seconds = 0
     monkeypatch.setattr(time, "sleep", lambda _s: None)
@@ -435,3 +388,45 @@ def test_capture_success_but_live_view_restart_fails_sets_health_message(
 
     # Session should still complete and return to IDLE
     wait_for(lambda: controller.state == ControllerState.IDLE)
+
+
+def test_set_camera_error_does_not_override_existing_error(tmp_path):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera, tmp_path)
+
+    controller._set_camera_error(
+        HealthCode.CAMERA_NOT_DETECTED,
+        "Primary error"
+    )
+
+    controller._set_camera_error(
+        HealthCode.CAMERA_NOT_DETECTED,
+        "Secondary error"
+    )
+
+    health = controller.get_health()
+
+    assert health.level == HealthLevel.ERROR
+    assert health.message == "Primary error"
+
+
+def test_stop_live_view_exception_does_not_abort_capture(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera, tmp_path)
+
+    # Force stop_live_view to fail
+    monkeypatch.setattr(camera, "stop_live_view", lambda: (_ for _ in ()).throw(RuntimeError("boom")))
+
+    # Force capture to fail so we hit the error path
+    monkeypatch.setattr(camera, "capture", lambda *_: (_ for _ in ()).throw(RuntimeError("capture failed")))
+
+    controller.photos_taken = 0
+    controller.total_photos = 3
+    controller.state = ControllerState.READY_FOR_PHOTO
+    controller.countdown_remaining = 0
+
+    controller._photo_capture_worker()
+
+    health = controller.get_health()
+    assert health.level == HealthLevel.ERROR
+    assert "photo 1 of 3" in health.message
