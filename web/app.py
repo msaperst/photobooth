@@ -8,11 +8,13 @@ from flask import Flask, Response, jsonify, request, render_template
 from controller.controller import PhotoboothController, Command, CommandType
 from controller.gphoto_camera import GPhotoCamera
 
+PROJECT_ROOT = Path("/home/max/photobooth")
+
 
 def create_app(camera=None):
     app = Flask(
         __name__,
-        static_folder="../sessions",
+        static_folder=str(PROJECT_ROOT / "sessions"),
         static_url_path="/sessions",
     )
 
@@ -21,7 +23,7 @@ def create_app(camera=None):
 
     controller = PhotoboothController(
         camera=camera,
-        image_root=Path("/home/max/photobooth"),
+        image_root=PROJECT_ROOT,
     )
     controller.start()
     app.controller = controller
