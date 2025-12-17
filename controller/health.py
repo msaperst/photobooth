@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, UTC
 from enum import Enum, auto
 from typing import List, Optional
@@ -13,6 +13,7 @@ class HealthLevel(Enum):
 class HealthCode(Enum):
     CAMERA_NOT_DETECTED = auto()
     CAMERA_DISCONNECTED = auto()
+    STRIP_CREATION_FAILED = auto()
     UNKNOWN_ERROR = auto()
 
 
@@ -23,7 +24,7 @@ class HealthStatus:
     message: Optional[str] = None
     instructions: List[str] | None = None
     recoverable: bool = True
-    last_updated: datetime = datetime.now(UTC)
+    last_updated: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     @staticmethod
     def ok() -> "HealthStatus":
