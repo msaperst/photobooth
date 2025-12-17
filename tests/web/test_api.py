@@ -1,15 +1,16 @@
-import json
-
 import pytest
+from flask import json
 
-from web.app import app, controller
+from tests.fakes.fake_camera import FakeCamera
+from web.app import create_app
 
 
 @pytest.fixture
-def client():
+def client(tmp_path):
+    camera = FakeCamera(tmp_path)
+    app = create_app(camera=camera)
     app.config["TESTING"] = True
-    with app.test_client() as client:
-        yield client
+    return app.test_client()
 
 
 def test_status_endpoint(client):
@@ -32,7 +33,7 @@ def test_start_session_ok(client):
 
 def test_start_session_rejected_when_busy(client, monkeypatch):
     monkeypatch.setattr(
-        controller,
+        client.application.controller,
         "get_status",
         lambda: {"state": "CAPTURING", "busy": True},
     )
@@ -44,7 +45,7 @@ def test_start_session_rejected_when_busy(client, monkeypatch):
 def test_take_photo_ok_when_ready(client, monkeypatch):
     # Pretend controller is ready for photo
     monkeypatch.setattr(
-        controller,
+        client.application.controller,
         "get_status",
         lambda: {
             "state": "READY_FOR_PHOTO",
@@ -60,7 +61,7 @@ def test_take_photo_ok_when_ready(client, monkeypatch):
     def fake_enqueue(command):
         called["command"] = command
 
-    monkeypatch.setattr(controller, "enqueue", fake_enqueue)
+    monkeypatch.setattr(client.application.controller, "enqueue", fake_enqueue)
 
     response = client.post("/take-photo")
     assert response.status_code == 200
@@ -70,7 +71,7 @@ def test_take_photo_ok_when_ready(client, monkeypatch):
 
 def test_take_photo_rejected_when_not_ready(client, monkeypatch):
     monkeypatch.setattr(
-        controller,
+        client.application.controller,
         "get_status",
         lambda: {
             "state": "COUNTDOWN",
@@ -87,7 +88,7 @@ def test_take_photo_rejected_when_not_ready(client, monkeypatch):
 
 def test_live_view_returns_204_when_no_frame(client, monkeypatch):
     # None -> 204
-    monkeypatch.setattr(controller, "get_live_view_frame", lambda: None)
+    monkeypatch.setattr(client.application.controller, "get_live_view_frame", lambda: None)
 
     resp = client.get("/live-view")
     assert resp.status_code == 204
@@ -96,7 +97,7 @@ def test_live_view_returns_204_when_no_frame(client, monkeypatch):
 
 def test_live_view_returns_204_when_empty_bytes(client, monkeypatch):
     # b"" -> 204 (since `if not frame:`)
-    monkeypatch.setattr(controller, "get_live_view_frame", lambda: b"")
+    monkeypatch.setattr(client.application.controller, "get_live_view_frame", lambda: b"")
 
     resp = client.get("/live-view")
     assert resp.status_code == 204
@@ -105,7 +106,7 @@ def test_live_view_returns_204_when_empty_bytes(client, monkeypatch):
 
 def test_live_view_returns_jpeg_when_frame_exists(client, monkeypatch):
     fake_frame = b"\xff\xd8\xff\xe0" + b"fakejpegdata" + b"\xff\xd9"
-    monkeypatch.setattr(controller, "get_live_view_frame", lambda: fake_frame)
+    monkeypatch.setattr(client.application.controller, "get_live_view_frame", lambda: fake_frame)
 
     resp = client.get("/live-view")
     assert resp.status_code == 200
@@ -117,3 +118,9 @@ def test_index_page_renders(client):
     response = client.get("/")
     assert response.status_code == 200
     assert response.content_type.startswith("text/html")
+
+
+def test_health_endpoint_ok(client):
+    resp = client.get("/health")
+    assert resp.status_code == 200
+    assert resp.json == {"level": "OK"}

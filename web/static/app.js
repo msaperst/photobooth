@@ -31,10 +31,39 @@ function enableStripSelection(enabled) {
     });
 }
 
+/* --------- Error Messages -----*/
+
+function updateHealthOverlay(health) {
+    const overlay = document.getElementById("healthOverlay");
+    const message = document.getElementById("healthMessage");
+    const instructions = document.getElementById("healthInstructions");
+
+    if (health.level === "OK") {
+        overlay.classList.add("hidden");
+        return;
+    }
+
+    message.textContent = health.message || "System error";
+
+    instructions.innerHTML = "";
+    (health.instructions || []).forEach(text => {
+        const li = document.createElement("li");
+        li.textContent = text;
+        instructions.appendChild(li);
+    });
+
+    overlay.classList.remove("hidden");
+}
+
 /* ---------- API ---------- */
 
 async function fetchStatus() {
     const response = await fetch("/status");
+    return response.json();
+}
+
+async function fetchHealth() {
+    const response = await fetch("/health");
     return response.json();
 }
 
@@ -94,11 +123,11 @@ async function pollLiveView() {
 
 async function poll() {
     const status = await fetchStatus();
-
     updateButton(status);
-
-    // Disable strip selection once session starts
     enableStripSelection(!status.busy);
+
+    const health = await fetchHealth();
+    updateHealthOverlay(health);
 
     // Reset strip selection after session ends
     if (lastBusy && !status.busy) {
