@@ -11,9 +11,9 @@ from controller.gphoto_camera import GPhotoCamera
 
 def create_app(camera=None):
     PROJECT_ROOT = Path("/home/max/photobooth").resolve()
-    SESSIONS_ROOT = (PROJECT_ROOT / "sessions").resolve()
 
     app = Flask(__name__)
+    app.config["SESSIONS_ROOT"] = PROJECT_ROOT / "sessions"
 
     if camera is None:
         camera = GPhotoCamera()
@@ -76,6 +76,7 @@ def create_app(camera=None):
 
     @app.route("/sessions/<path:filename>")
     def sessions(filename: str):
-        return send_from_directory(str(SESSIONS_ROOT), filename)
+        sessions_root = app.config["SESSIONS_ROOT"]
+        return send_from_directory(str(sessions_root), filename)
 
     return app

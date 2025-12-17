@@ -124,3 +124,28 @@ def test_health_endpoint_ok(client):
     resp = client.get("/health")
     assert resp.status_code == 200
     assert resp.json == {"level": "OK"}
+
+
+def test_sessions_route_serves_file(tmp_path, monkeypatch):
+    """
+    Verify that /sessions/<path> serves files from the sessions directory.
+    """
+
+    # Arrange: create fake sessions directory + file
+    sessions_root = tmp_path / "sessions"
+    sessions_root.mkdir()
+
+    test_file = sessions_root / "test.txt"
+    test_file.write_text("hello photobooth")
+
+    # Patch the SESSIONS_ROOT used by the app
+    app = create_app(camera=None)
+    app.config["SESSIONS_ROOT"] = sessions_root
+    client = app.test_client()
+
+    # Act
+    response = client.get("/sessions/test.txt")
+
+    # Assert
+    assert response.status_code == 200
+    assert response.data == b"hello photobooth"
