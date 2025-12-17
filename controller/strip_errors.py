@@ -1,0 +1,2 @@
+class StripCreationError(Exception):
+    pass
