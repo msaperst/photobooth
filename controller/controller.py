@@ -64,6 +64,7 @@ class PhotoboothController:
         # Camera + storage
         self.camera = camera
         self.image_root = image_root
+        self._captured_image_paths = []
 
         # Controller loop
         self.state = ControllerState.IDLE
@@ -213,4 +214,19 @@ class PhotoboothController:
                     "Check the USB cable",
                     "Replace the camera battery if needed",
                 ],
+            )
+
+    def _set_processing_error(self, message: str):
+        with self._health_lock:
+            if self._health_status.level == HealthLevel.ERROR:
+                return
+            self._health_status = HealthStatus.error(
+                code=HealthCode.STRIP_CREATION_FAILED,
+                message=message,
+                instructions=[
+                    "Please restart the photobooth",
+                    "Verify strip configuration and logo file",
+                    "Contact the operator if the problem persists",
+                ],
+                recoverable=False,
             )

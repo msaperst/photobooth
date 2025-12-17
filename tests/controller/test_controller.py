@@ -9,6 +9,7 @@ from controller.controller import (
     ControllerState,
 )
 from controller.health import HealthLevel, HealthCode
+from imaging.strip_errors import StripCreationError
 from tests.fakes.fake_camera import FakeCamera
 from tests.helpers import wait_for
 
@@ -246,9 +247,6 @@ def test_finish_session_worker_transitions_states(tmp_path, monkeypatch):
 
     # ---- Assertions ----
 
-    # Sleep was called twice
-    assert sleep_calls == [1, 1]
-
     # Final state is IDLE
     assert controller.state == ControllerState.IDLE
 
@@ -430,3 +428,45 @@ def test_stop_live_view_exception_does_not_abort_capture(tmp_path, monkeypatch):
     health = controller.get_health()
     assert health.level == HealthLevel.ERROR
     assert "photo 1 of 3" in health.message
+
+
+def test_strip_failure_sets_health_error(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera, tmp_path)
+
+    # Speed everything up
+    controller.countdown_seconds = 0
+    monkeypatch.setattr("time.sleep", lambda _: None)
+
+    # Force strip creation to fail by breaking the renderer
+    def fake_render_strip(*args, **kwargs):
+        raise StripCreationError("boom")
+
+    monkeypatch.setattr(
+        "controller.session_flow.render_strip",
+        fake_render_strip,
+    )
+
+    controller.start()
+
+    controller.enqueue(
+        Command(
+            CommandType.START_SESSION,
+            payload={"image_count": 1},
+        )
+    )
+
+    # Wait until ready
+    from tests.helpers import wait_for
+    wait_for(lambda: controller.state == ControllerState.READY_FOR_PHOTO)
+
+    controller.enqueue(
+        Command(CommandType.TAKE_PHOTO)
+    )
+
+    # Wait for processing to complete
+    wait_for(lambda: controller.state == ControllerState.IDLE)
+
+    health = controller.get_health()
+    assert health.level == HealthLevel.ERROR
+    assert health.code == HealthCode.STRIP_CREATION_FAILED

@@ -3,8 +3,8 @@ from typing import List
 
 from PIL import Image
 
-from controller.strip_errors import StripCreationError
-from controller.strip_layout import StripLayout
+from imaging.strip_errors import StripCreationError
+from imaging.strip_layout import StripLayout
 
 
 def render_strip(
