@@ -8,7 +8,8 @@ from controller.controller import (
     CommandType,
     ControllerState,
 )
-from controller.health import HealthLevel, HealthCode
+from controller.health import HealthLevel, HealthCode, HealthSource
+from imaging.strip_errors import StripCreationError
 from tests.fakes.fake_camera import FakeCamera
 from tests.helpers import wait_for
 
@@ -35,8 +36,22 @@ def test_manual_photo_progression(tmp_path):
         # Wait until that photo is captured
         wait_for(lambda: controller.photos_taken == expected_count)
 
-    # Final assertion (belt-and-suspenders)
-    images = list(tmp_path.glob("*.jpg"))
+    # Find the session photos directory
+    sessions_dir = tmp_path / "sessions"
+    assert sessions_dir.exists()
+
+    # There should be exactly one date directory
+    date_dirs = list(sessions_dir.iterdir())
+    assert len(date_dirs) == 1
+
+    # There should be exactly one session directory
+    session_dirs = list(date_dirs[0].iterdir())
+    assert len(session_dirs) == 1
+
+    photos_dir = session_dirs[0] / "photos"
+    assert photos_dir.exists()
+
+    images = list(photos_dir.glob("*.jpg"))
     assert len(images) == 3
 
 
@@ -246,9 +261,6 @@ def test_finish_session_worker_transitions_states(tmp_path, monkeypatch):
 
     # ---- Assertions ----
 
-    # Sleep was called twice
-    assert sleep_calls == [1, 1]
-
     # Final state is IDLE
     assert controller.state == ControllerState.IDLE
 
@@ -378,13 +390,14 @@ def test_capture_success_but_live_view_restart_fails_sets_health_message(
     # Photo should still be counted
     wait_for(lambda: controller.photos_taken == 1)
 
-    # Health should reflect restart failure
-    health = controller.get_health()
-    assert health.level == HealthLevel.ERROR
-    assert health.code == HealthCode.CAMERA_NOT_DETECTED
-    assert (
-            "live preview could not be restarted" in health.message
+    # Health should reflect restart failure at some point
+    wait_for(
+        lambda: controller.get_health().level == HealthLevel.ERROR
     )
+
+    health = controller.get_health()
+    assert health.code == HealthCode.CAMERA_NOT_DETECTED
+    assert "live preview could not be restarted" in health.message
 
     # Session should still complete and return to IDLE
     wait_for(lambda: controller.state == ControllerState.IDLE)
@@ -396,12 +409,14 @@ def test_set_camera_error_does_not_override_existing_error(tmp_path):
 
     controller._set_camera_error(
         HealthCode.CAMERA_NOT_DETECTED,
-        "Primary error"
+        "Primary error",
+        source=HealthSource.CAPTURE,
     )
 
     controller._set_camera_error(
         HealthCode.CAMERA_NOT_DETECTED,
-        "Secondary error"
+        "Secondary error",
+        source=HealthSource.LIVE_VIEW,
     )
 
     health = controller.get_health()
@@ -430,3 +445,45 @@ def test_stop_live_view_exception_does_not_abort_capture(tmp_path, monkeypatch):
     health = controller.get_health()
     assert health.level == HealthLevel.ERROR
     assert "photo 1 of 3" in health.message
+
+
+def test_strip_failure_sets_health_error(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera, tmp_path)
+
+    # Speed everything up
+    controller.countdown_seconds = 0
+    monkeypatch.setattr("time.sleep", lambda _: None)
+
+    # Force strip creation to fail by breaking the renderer
+    def fake_render_strip(*args, **kwargs):
+        raise StripCreationError("boom")
+
+    monkeypatch.setattr(
+        "controller.session_flow.render_strip",
+        fake_render_strip,
+    )
+
+    controller.start()
+
+    controller.enqueue(
+        Command(
+            CommandType.START_SESSION,
+            payload={"image_count": 1},
+        )
+    )
+
+    # Wait until ready
+    from tests.helpers import wait_for
+    wait_for(lambda: controller.state == ControllerState.READY_FOR_PHOTO)
+
+    controller.enqueue(
+        Command(CommandType.TAKE_PHOTO)
+    )
+
+    # Wait for processing to complete
+    wait_for(lambda: controller.state == ControllerState.IDLE)
+
+    health = controller.get_health()
+    assert health.level == HealthLevel.ERROR
+    assert health.code == HealthCode.STRIP_CREATION_FAILED

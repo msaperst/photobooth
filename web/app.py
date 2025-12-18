@@ -3,21 +3,26 @@ Flask application for photobooth UI and API.
 """
 from pathlib import Path
 
-from flask import Flask, Response, jsonify, request, render_template
+from flask import Flask, Response, jsonify, request, render_template, send_from_directory
 
 from controller.controller import PhotoboothController, Command, CommandType
 from controller.gphoto_camera import GPhotoCamera
 
 
-def create_app(camera=None):
+def create_app(camera=None, image_root: Path | None = None):
+    if image_root is None:
+        # Default: project root relative to this file
+        image_root = Path(__file__).resolve().parents[1]
+
     app = Flask(__name__)
+    app.config["SESSIONS_ROOT"] = image_root / "sessions"
 
     if camera is None:
         camera = GPhotoCamera()
 
     controller = PhotoboothController(
         camera=camera,
-        image_root=Path("/home/max/photobooth"),
+        image_root=image_root,
     )
     controller.start()
     app.controller = controller
@@ -70,5 +75,10 @@ def create_app(camera=None):
         )
 
         return jsonify({"ok": True})
+
+    @app.route("/sessions/<path:filename>")
+    def sessions(filename: str):
+        sessions_root = app.config["SESSIONS_ROOT"]
+        return send_from_directory(str(sessions_root), filename)
 
     return app
