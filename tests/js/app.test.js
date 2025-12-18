@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { getButtonLabel } from "../../web/static/ui_logic.js";
-import { getConnectionHealth } from "../ui_state.js";
+import { getConnectionHealth } from "../../web/static/ui_state.js";
 
 describe("getButtonLabel", () => {
     it("shows Take Photo when idle", () => {
