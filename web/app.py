@@ -9,18 +9,20 @@ from controller.controller import PhotoboothController, Command, CommandType
 from controller.gphoto_camera import GPhotoCamera
 
 
-def create_app(camera=None):
-    PROJECT_ROOT = Path("/home/max/photobooth").resolve()
+def create_app(camera=None, image_root: Path | None = None):
+    if image_root is None:
+        # Default: project root relative to this file
+        image_root = Path(__file__).resolve().parents[1]
 
     app = Flask(__name__)
-    app.config["SESSIONS_ROOT"] = PROJECT_ROOT / "sessions"
+    app.config["SESSIONS_ROOT"] = image_root / "sessions"
 
     if camera is None:
         camera = GPhotoCamera()
 
     controller = PhotoboothController(
         camera=camera,
-        image_root=PROJECT_ROOT,
+        image_root=image_root,
     )
     controller.start()
     app.controller = controller

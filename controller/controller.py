@@ -65,7 +65,7 @@ class PhotoboothController:
         self.camera = camera
         self.image_root = image_root
         self.sessions_root = image_root / "sessions"
-        self.sessions_root.mkdir(exist_ok=True)
+        self.sessions_root.mkdir(parents=True, exist_ok=True)
         self._session_storage = None
         self._captured_image_paths = []
         self.strip_logo_path = Path(__file__).parent.parent / "web/static/logo.png"
