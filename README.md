@@ -342,3 +342,7 @@ Step 2: [step-2-deploy-and-run-on-raspberry-pi.md](docs/step-2-deploy-and-run-on
 ### Recovery and Errors
 
 See: [recovery-and-errors.md](docs/recovery-and-errors.md)
+
+### Accessing Photos
+
+See: [session-storage-and-access.md](docs/session-storage-and-access.md)
