@@ -9,8 +9,10 @@ export function getConnectionHealth(serverReachable) {
         level: "ERROR",
         message: "Photobooth connection lost",
         instructions: [
-            "Please wait while we reconnect",
-            "If this does not recover, ask an attendant"
+            "Check that the photobooth computer is powered on",
+            "Confirm this screen is connected to the photobooth Wi-Fi network",
+            "Wait a few seconds — the system will reconnect automatically",
+            "If the issue persists, restart the photobooth system",
         ]
     };
 }

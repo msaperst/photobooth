@@ -52,6 +52,10 @@ describe("getButtonLabel", () => {
         expect(getButtonLabel({ state: "PROCESSING" })).toBe("Processing…");
         expect(getButtonLabel({ state: "PRINTING" })).toBe("Printing…");
     });
+
+    it("falls back to state string for unknown states", () => {
+        expect(getButtonLabel({ state: "UNKNOWN_STATE" })).toBe("UNKNOWN_STATE");
+    });
 });
 
 describe("getConnectionHealth", () => {
@@ -66,8 +70,10 @@ describe("getConnectionHealth", () => {
             level: "ERROR",
             message: "Photobooth connection lost",
             instructions: [
-                "Please wait while we reconnect",
-                "If this does not recover, ask an attendant"
+                "Check that the photobooth computer is powered on",
+                "Confirm this screen is connected to the photobooth Wi-Fi network",
+                "Wait a few seconds — the system will reconnect automatically",
+                "If the issue persists, restart the photobooth system",
             ]
         });
     });
