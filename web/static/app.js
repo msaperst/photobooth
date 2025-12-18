@@ -1,6 +1,13 @@
 import { getButtonLabel } from "./ui_logic.js";
+import { getConnectionHealth } from "./ui_state.js";
 
 const isBrowser = typeof window !== "undefined";
+
+/* ---------- Connection State ---------- */
+
+let serverReachable = true;
+
+/* ---------- UI Helpers ---------- */
 
 function updateButton(status) {
     const button = document.getElementById("startButton");
@@ -11,10 +18,16 @@ function updateButton(status) {
     );
 }
 
-let selectedStrips = 2;
-let lastBusy = false;
+function syncConnectionOverlay() {
+    updateHealthOverlay(
+        getConnectionHealth(serverReachable)
+    );
+}
 
 /* ---------- Strip Selection ---------- */
+
+let selectedStrips = 2;
+let lastBusy = false;
 
 function setStripSelection(strips) {
     selectedStrips = strips;
@@ -31,7 +44,7 @@ function enableStripSelection(enabled) {
     });
 }
 
-/* --------- Error Messages -----*/
+/* ---------- Error Overlay ---------- */
 
 function updateHealthOverlay(health) {
     const overlay = document.getElementById("healthOverlay");
@@ -44,8 +57,8 @@ function updateHealthOverlay(health) {
     }
 
     message.textContent = health.message || "System error";
-
     instructions.innerHTML = "";
+
     (health.instructions || []).forEach(text => {
         const li = document.createElement("li");
         li.textContent = text;
@@ -57,19 +70,27 @@ function updateHealthOverlay(health) {
 
 /* ---------- API ---------- */
 
-async function fetchStatus() {
-    const response = await fetch("/status");
+async function fetchJson(url) {
+    const response = await fetch(url, { cache: "no-store" });
+    if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+    }
     return response.json();
 }
 
+async function fetchStatus() {
+    return fetchJson("/status");
+}
+
 async function fetchHealth() {
-    const response = await fetch("/health");
-    return response.json();
+    return fetchJson("/health");
 }
 
 /* ---------- Main Button ---------- */
 
 async function handleButtonClick() {
+    if (!serverReachable) return;
+
     const status = await fetchStatus();
 
     if (status.state === "IDLE") {
@@ -82,7 +103,6 @@ async function handleButtonClick() {
             })
         });
 
-        // Immediately take first photo
         await fetch("/take-photo", { method: "POST" });
         return;
     }
@@ -97,48 +117,62 @@ async function handleButtonClick() {
 let lastObjectUrl = null;
 
 async function pollLiveView() {
+    if (!serverReachable) return;
+
     const img = document.getElementById("liveView");
     if (!img) return;
 
     try {
         const resp = await fetch(`/live-view?ts=${Date.now()}`);
-        if (resp.status === 204) return;
-        if (!resp.ok) return;
+        if (resp.status === 204 || !resp.ok) return;
 
         const blob = await resp.blob();
         const url = URL.createObjectURL(blob);
 
-        // Avoid leaking object URLs
         if (lastObjectUrl) URL.revokeObjectURL(lastObjectUrl);
         lastObjectUrl = url;
 
         img.src = url;
-    } catch (e) {
-        // Silent failure is fine; next poll will retry
-        console.info(e);
+    } catch {
+        // Connection loss is handled by main poll loop
     }
 }
 
 /* ---------- Poll Loop ---------- */
 
 async function poll() {
-    const status = await fetchStatus();
-    updateButton(status);
-    enableStripSelection(!status.busy);
+    try {
+        const [status, health] = await Promise.all([
+            fetchStatus(),
+            fetchHealth()
+        ]);
 
-    const health = await fetchHealth();
-    updateHealthOverlay(health);
+        if (!serverReachable) {
+            serverReachable = true;
+            syncConnectionOverlay();
+        }
 
-    // Reset strip selection after session ends
-    if (lastBusy && !status.busy) {
-        setStripSelection(2);
+        updateButton(status);
+        enableStripSelection(!status.busy);
+        updateHealthOverlay(health);
+
+        if (lastBusy && !status.busy) {
+            setStripSelection(2);
+        }
+
+        lastBusy = status.busy;
+
+    } catch (err) {
+        if (serverReachable) {
+            serverReachable = false;
+            syncConnectionOverlay();
+        }
     }
-
-    lastBusy = status.busy;
 }
 
+/* ---------- Init ---------- */
+
 function initUI() {
-    // Wire strip buttons
     document.querySelectorAll(".strip-option").forEach(button => {
         button.addEventListener("click", () => {
             if (button.disabled) return;

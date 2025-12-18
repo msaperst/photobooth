@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { getButtonLabel } from "../../web/static/ui_logic.js";
+import { getConnectionHealth } from "../../web/static/ui_state.js";
 
 describe("getButtonLabel", () => {
     it("shows Take Photo when idle", () => {
@@ -50,5 +51,30 @@ describe("getButtonLabel", () => {
         expect(getButtonLabel({ state: "CAPTURING_PHOTO" })).toBe("Capturing…");
         expect(getButtonLabel({ state: "PROCESSING" })).toBe("Processing…");
         expect(getButtonLabel({ state: "PRINTING" })).toBe("Printing…");
+    });
+
+    it("falls back to state string for unknown states", () => {
+        expect(getButtonLabel({ state: "UNKNOWN_STATE" })).toBe("UNKNOWN_STATE");
+    });
+});
+
+describe("getConnectionHealth", () => {
+    it("returns OK when server is reachable", () => {
+        expect(getConnectionHealth(true)).toEqual({
+            level: "OK"
+        });
+    });
+
+    it("returns error overlay data when server is unreachable", () => {
+        expect(getConnectionHealth(false)).toEqual({
+            level: "ERROR",
+            message: "Photobooth connection lost",
+            instructions: [
+                "Check that the photobooth computer is powered on",
+                "Confirm this screen is connected to the photobooth Wi-Fi network",
+                "Wait a few seconds — the system will reconnect automatically",
+                "If the issue persists, restart the photobooth system",
+            ]
+        });
     });
 });
