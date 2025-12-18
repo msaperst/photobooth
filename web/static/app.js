@@ -185,17 +185,11 @@ function initUI() {
         .getElementById("startButton")
         .addEventListener("click", handleButtonClick);
 
-    setInterval(() => {
-        poll().catch(() => {});
-    }, 500);
+    setInterval(poll, 500);
+    poll();
 
-    poll().catch(() => {});
-
-    setInterval(() => {
-        pollLiveView().catch(() => {});
-    }, 400);
-
-    pollLiveView().catch(() => {});
+    setInterval(pollLiveView, 400);
+    pollLiveView();
 }
 
 if (isBrowser) {
