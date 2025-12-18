@@ -1,4 +1,5 @@
 import { getButtonLabel } from "./ui_logic.js";
+import { getConnectionHealth } from "./ui_state.js";
 
 const isBrowser = typeof window !== "undefined";
 
@@ -17,19 +18,10 @@ function updateButton(status) {
     );
 }
 
-function showConnectionLostOverlay() {
-    updateHealthOverlay({
-        level: "ERROR",
-        message: "Photobooth connection lost",
-        instructions: [
-            "Please wait while we reconnect",
-            "If this does not recover, ask an attendant"
-        ]
-    });
-}
-
-function clearConnectionLostOverlay() {
-    updateHealthOverlay({ level: "OK" });
+function syncConnectionOverlay() {
+    updateHealthOverlay(
+        getConnectionHealth(serverReachable)
+    );
 }
 
 /* ---------- Strip Selection ---------- */
@@ -157,7 +149,7 @@ async function poll() {
 
         if (!serverReachable) {
             serverReachable = true;
-            clearConnectionLostOverlay();
+            syncConnectionOverlay();
         }
 
         updateButton(status);
@@ -173,7 +165,7 @@ async function poll() {
     } catch (err) {
         if (serverReachable) {
             serverReachable = false;
-            showConnectionLostOverlay();
+            syncConnectionOverlay();
         }
     }
 }

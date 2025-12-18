@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { getButtonLabel } from "../../web/static/ui_logic.js";
+import { getConnectionHealth } from "../ui_state.js";
 
 describe("getButtonLabel", () => {
     it("shows Take Photo when idle", () => {
@@ -50,5 +51,24 @@ describe("getButtonLabel", () => {
         expect(getButtonLabel({ state: "CAPTURING_PHOTO" })).toBe("Capturing…");
         expect(getButtonLabel({ state: "PROCESSING" })).toBe("Processing…");
         expect(getButtonLabel({ state: "PRINTING" })).toBe("Printing…");
+    });
+});
+
+describe("getConnectionHealth", () => {
+    it("returns OK when server is reachable", () => {
+        expect(getConnectionHealth(true)).toEqual({
+            level: "OK"
+        });
+    });
+
+    it("returns error overlay data when server is unreachable", () => {
+        expect(getConnectionHealth(false)).toEqual({
+            level: "ERROR",
+            message: "Photobooth connection lost",
+            instructions: [
+                "Please wait while we reconnect",
+                "If this does not recover, ask an attendant"
+            ]
+        });
     });
 });
