@@ -18,20 +18,15 @@ class Camera(ABC):
         """Return True if the camera is connected and usable."""
         pass
 
-    @abstractmethod
+    # optional capabilities
     def start_live_view(self) -> None:
-        """Start live view streaming."""
-        pass
+        raise NotImplementedError
 
-    @abstractmethod
     def stop_live_view(self) -> None:
-        """Stop live view streaming."""
-        pass
+        raise NotImplementedError
 
-    @abstractmethod
     def get_live_view_frame(self) -> bytes:
-        """Return a single JPEG frame from live view."""
-        pass
+        raise NotImplementedError
 
     @abstractmethod
     def capture(self, output_dir: Path) -> Path:

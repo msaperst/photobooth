@@ -18,7 +18,6 @@ class HealthCode(Enum):
 
 
 class HealthSource(Enum):
-    LIVE_VIEW = auto()
     CAPTURE = auto()
     PROCESSING = auto()
 

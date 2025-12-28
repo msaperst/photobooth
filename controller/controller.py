@@ -19,8 +19,9 @@ from typing import Optional
 
 from controller.camera import Camera
 from controller.health import HealthStatus, HealthCode, HealthLevel, HealthSource
-from controller.live_view_worker import LiveViewWorker
 from controller.session_flow import SessionFlow
+
+CAMERA_NOT_DETECTED = "Camera not detected"
 
 
 class ControllerState(Enum):
@@ -76,18 +77,12 @@ class PhotoboothController:
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._running = False
 
-        # Live view
-        self._latest_live_view_frame: Optional[bytes] = None
-        self._live_view_lock = threading.Lock()
-        self._live_view_running = False
-
         # Health
         self._health_lock = threading.Lock()
         self._health_status = HealthStatus.ok()
         self._health_source: Optional[HealthSource] = None
 
         # Workers (internal)
-        self._live_view_worker = LiveViewWorker(controller=self)
         self._session_flow = SessionFlow(controller=self)
 
     # ---------- Lifecycle ----------
@@ -95,25 +90,19 @@ class PhotoboothController:
     def start(self):
         self._running = True
 
-        # Always start worker so recovery is possible even if camera is OFF at boot.
-        self._start_live_view_worker()
-
-        # Best-effort initial live view start. Failure is ok; worker will recover later.
-        try:
-            self.camera.start_live_view()
+        if self.camera.health_check():
             self._mark_camera_ok()
-        except Exception:
+        else:
             self._set_camera_error(
                 HealthCode.CAMERA_NOT_DETECTED,
-                "Camera not detected",
-                source=HealthSource.LIVE_VIEW,
+                CAMERA_NOT_DETECTED,
+                source=HealthSource.CAPTURE,
             )
 
         self._thread.start()
 
     def stop(self):
         self._running = False
-        self._live_view_worker.stop()
         try:
             self.camera.stop_live_view()
         except Exception:
@@ -134,10 +123,6 @@ class PhotoboothController:
                 "countdown_remaining": self.countdown_remaining,
             }
 
-    def get_live_view_frame(self) -> Optional[bytes]:
-        with self._live_view_lock:
-            return self._latest_live_view_frame
-
     def get_health(self) -> HealthStatus:
         with self._health_lock:
             return self._health_status
@@ -150,6 +135,7 @@ class PhotoboothController:
                 command = self.command_queue.get(timeout=0.1)
                 self._handle_command(command)
             except Empty:
+                self._poll_camera_health_if_idle()
                 continue
             except Exception as e:
                 # Keep controller loop alive. Tests + logs catch regressions.
@@ -166,13 +152,6 @@ class PhotoboothController:
 
     def _begin_photo_capture(self):
         self._session_flow.begin_photo_capture()
-
-    def _start_live_view_worker(self):
-        if self._live_view_running:
-            return
-
-        self._live_view_running = True
-        self._live_view_worker.start()
 
     def _finish_session_worker(self):
         self._session_flow._finish_session_worker()
@@ -191,17 +170,32 @@ class PhotoboothController:
         with self._state_lock:
             return self.state
 
-    # Live view frame update
-    def _set_latest_live_view_frame(self, frame: Optional[bytes]) -> None:
-        with self._live_view_lock:
-            self._latest_live_view_frame = frame
-
     # Health inspection
     def _is_unhealthy(self) -> bool:
         with self._health_lock:
             return self._health_status.level == HealthLevel.ERROR
 
     # ---------- Health helpers ----------
+
+    def _poll_camera_health_if_idle(self) -> None:
+        if self.state != ControllerState.IDLE:
+            return
+
+        try:
+            if self.camera.health_check():
+                self._mark_camera_ok()
+            else:
+                self._set_camera_error(
+                    HealthCode.CAMERA_NOT_DETECTED,
+                    CAMERA_NOT_DETECTED,
+                    source=HealthSource.CAPTURE,
+                )
+        except Exception:
+            self._set_camera_error(
+                HealthCode.CAMERA_NOT_DETECTED,
+                CAMERA_NOT_DETECTED,
+                source=HealthSource.CAPTURE,
+            )
 
     def _get_health_source(self) -> Optional[HealthSource]:
         with self._health_lock:
