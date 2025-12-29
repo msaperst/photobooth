@@ -1,7 +1,6 @@
 import threading
 import time
 
-from controller.camera import CameraError
 from controller.controller import (
     PhotoboothController,
     Command,
@@ -75,20 +74,6 @@ def test_busy_flag_after_start_session(tmp_path):
     wait_for(lambda: controller.get_status()["busy"] is True)
 
 
-def test_controller_stop_calls_camera_stop_live_view(tmp_path):
-    camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
-
-    controller.start()
-    assert controller._running is True
-    assert camera.live_view_active is True
-
-    controller.stop()
-
-    assert controller._running is False
-    assert camera.live_view_active is False
-
-
 def test_controller_stop_ignores_camera_errors(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
     controller = PhotoboothController(camera, tmp_path)
@@ -103,19 +88,6 @@ def test_controller_stop_ignores_camera_errors(tmp_path, monkeypatch):
     controller.stop()
 
     assert controller._running is False
-
-
-def test_get_live_view_frame_returns_latest_frame(tmp_path):
-    camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
-
-    fake_frame = b"\xff\xd8\xff"
-    with controller._live_view_lock:
-        controller._latest_live_view_frame = fake_frame
-
-    frame = controller.get_live_view_frame()
-
-    assert frame == fake_frame
 
 
 def test_run_loop_logs_unhandled_exceptions(tmp_path, capsys, monkeypatch):
@@ -216,30 +188,6 @@ def test_photo_capture_worker_sets_idle_on_capture_failure(tmp_path, monkeypatch
     assert "Session was cancelled" in health.message
 
 
-def test_start_live_view_worker_returns_if_already_running(tmp_path, monkeypatch):
-    camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
-
-    # Pretend live view worker is already running
-    controller._live_view_running = True
-
-    thread_created = False
-
-    def fake_thread(*args, **kwargs):
-        nonlocal thread_created
-        thread_created = True
-        raise AssertionError("Thread should not be created")
-
-    # Patch threading.Thread so we can detect misuse
-    monkeypatch.setattr("controller.controller.threading.Thread", fake_thread)
-
-    # Call the method under test
-    controller._start_live_view_worker()
-
-    # Assert no thread was started
-    assert thread_created is False
-
-
 def test_finish_session_worker_transitions_states(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
     controller = PhotoboothController(camera, tmp_path)
@@ -268,13 +216,11 @@ def test_finish_session_worker_transitions_states(tmp_path, monkeypatch):
     assert controller.session_active is False
 
 
-def test_start_sets_health_error_when_start_live_view_fails(tmp_path, monkeypatch):
+def test_start_does_not_fail_when_live_view_unavailable(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
 
-    def boom():
-        raise RuntimeError("camera not connected")
-
-    monkeypatch.setattr(camera, "start_live_view", boom)
+    # Simulate preview being unavailable
+    monkeypatch.setattr(camera, "start_live_view", lambda: (_ for _ in ()).throw(RuntimeError()))
 
     controller = PhotoboothController(camera, tmp_path)
 
@@ -282,8 +228,7 @@ def test_start_sets_health_error_when_start_live_view_fails(tmp_path, monkeypatc
     controller.start()
 
     health = controller.get_health()
-    assert health.level == HealthLevel.ERROR
-    assert health.code == HealthCode.CAMERA_NOT_DETECTED
+    assert health.level == HealthLevel.OK
 
 
 def test_capture_sets_health_error_when_restart_live_view_fails(tmp_path, monkeypatch):
@@ -305,21 +250,6 @@ def test_capture_sets_health_error_when_restart_live_view_fails(tmp_path, monkey
     controller.enqueue(Command(CommandType.TAKE_PHOTO))
 
     # Capture still succeeds, but health should reflect error
-    wait_for(lambda: controller.get_health().level == HealthLevel.ERROR)
-
-
-def test_live_view_camera_error_sets_health(tmp_path, monkeypatch):
-    camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
-
-    def fail_live_view():
-        raise CameraError("device busy")
-
-    monkeypatch.setattr(camera, "get_live_view_frame", fail_live_view)
-
-    controller.start()
-
-    # Live view worker runs in background
     wait_for(lambda: controller.get_health().level == HealthLevel.ERROR)
 
 
@@ -359,50 +289,6 @@ def test_capture_failure_mid_round_sets_contextual_message(tmp_path, monkeypatch
     assert "Session was cancelled" in health.message
 
 
-def test_capture_success_but_live_view_restart_fails_sets_health_message(
-        tmp_path, monkeypatch
-):
-    camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
-
-    # Make everything fast and deterministic
-    controller.countdown_seconds = 0
-    monkeypatch.setattr(time, "sleep", lambda _s: None)
-
-    # Capture succeeds (use FakeCamera default behavior)
-    # Force live view restart to fail
-    def fail_start_live_view():
-        raise RuntimeError("live view restart failed")
-
-    monkeypatch.setattr(camera, "start_live_view", fail_start_live_view)
-
-    controller.start()
-    controller.enqueue(
-        Command(CommandType.START_SESSION, payload={"image_count": 1})
-    )
-
-    # Wait until ready
-    wait_for(lambda: controller.state == ControllerState.READY_FOR_PHOTO)
-
-    # Take the photo
-    controller.enqueue(Command(CommandType.TAKE_PHOTO))
-
-    # Photo should still be counted
-    wait_for(lambda: controller.photos_taken == 1)
-
-    # Health should reflect restart failure at some point
-    wait_for(
-        lambda: controller.get_health().level == HealthLevel.ERROR
-    )
-
-    health = controller.get_health()
-    assert health.code == HealthCode.CAMERA_NOT_DETECTED
-    assert "live preview could not be restarted" in health.message
-
-    # Session should still complete and return to IDLE
-    wait_for(lambda: controller.state == ControllerState.IDLE)
-
-
 def test_set_camera_error_does_not_override_existing_error(tmp_path):
     camera = FakeCamera(tmp_path)
     controller = PhotoboothController(camera, tmp_path)
@@ -416,7 +302,7 @@ def test_set_camera_error_does_not_override_existing_error(tmp_path):
     controller._set_camera_error(
         HealthCode.CAMERA_NOT_DETECTED,
         "Secondary error",
-        source=HealthSource.LIVE_VIEW,
+        source=HealthSource.CAPTURE,
     )
 
     health = controller.get_health()
@@ -487,3 +373,227 @@ def test_strip_failure_sets_health_error(tmp_path, monkeypatch):
     health = controller.get_health()
     assert health.level == HealthLevel.ERROR
     assert health.code == HealthCode.STRIP_CREATION_FAILED
+
+
+def test_is_running_reflects_controller_lifecycle(tmp_path):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera, tmp_path)
+
+    assert controller._is_running() is False
+
+    controller.start()
+    assert controller._is_running() is True
+
+    controller.stop()
+    assert controller._is_running() is False
+
+
+def test_get_state_returns_current_state(tmp_path):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera, tmp_path)
+
+    controller.state = ControllerState.READY_FOR_PHOTO
+    assert controller._get_state() == ControllerState.READY_FOR_PHOTO
+
+    controller.state = ControllerState.PROCESSING
+    assert controller._get_state() == ControllerState.PROCESSING
+
+
+def test_is_unhealthy_reflects_health_state(tmp_path):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera, tmp_path)
+
+    assert controller._is_unhealthy() is False
+
+    controller._set_camera_error(
+        HealthCode.CAMERA_NOT_DETECTED,
+        "Camera missing",
+        source=HealthSource.CAPTURE,
+    )
+
+    assert controller._is_unhealthy() is True
+
+
+def test_get_health_source_returns_current_source(tmp_path):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera, tmp_path)
+
+    assert controller._get_health_source() is None
+
+    controller._set_camera_error(
+        HealthCode.CAMERA_NOT_DETECTED,
+        "Camera missing",
+        source=HealthSource.CAPTURE,
+    )
+
+    assert controller._get_health_source() == HealthSource.CAPTURE
+
+
+def test_poll_camera_health_noop_when_not_idle(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera, tmp_path)
+
+    controller.state = ControllerState.READY_FOR_PHOTO
+
+    called = {"n": 0}
+    monkeypatch.setattr(camera, "health_check", lambda: called.__setitem__("n", 1))
+
+    controller._poll_camera_health_if_idle()
+
+    assert called["n"] == 0
+
+
+def test_poll_camera_health_marks_ok_when_camera_recovers(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera, tmp_path)
+
+    controller.state = ControllerState.IDLE
+
+    controller._set_camera_error(
+        HealthCode.CAMERA_NOT_DETECTED,
+        "Camera missing",
+        source=HealthSource.CAPTURE,
+    )
+
+    monkeypatch.setattr(camera, "health_check", lambda: True)
+
+    controller._poll_camera_health_if_idle()
+
+    health = controller.get_health()
+    assert health.level == HealthLevel.OK
+
+
+def test_poll_camera_health_sets_error_on_exception(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera, tmp_path)
+    controller.state = ControllerState.IDLE
+
+    monkeypatch.setattr(camera, "health_check", lambda: (_ for _ in ()).throw(RuntimeError()))
+
+    controller._poll_camera_health_if_idle()
+
+    health = controller.get_health()
+    assert health.level == HealthLevel.ERROR
+    assert health.code == HealthCode.CAMERA_NOT_DETECTED
+
+
+def test_set_processing_error_does_not_override_existing_error(tmp_path):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera, tmp_path)
+
+    controller._set_camera_error(
+        HealthCode.CAMERA_NOT_DETECTED,
+        "Camera failed",
+        source=HealthSource.CAPTURE,
+    )
+
+    controller._set_processing_error("Strip failed")
+
+    health = controller.get_health()
+    assert health.code == HealthCode.CAMERA_NOT_DETECTED
+    assert health.message == "Camera failed"
+
+
+def test_poll_camera_health_sets_error_when_health_check_returns_false(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera, tmp_path)
+
+    # Must be IDLE for polling to occur
+    controller.state = ControllerState.IDLE
+
+    # Simulate camera responding but reporting unhealthy
+    monkeypatch.setattr(camera, "health_check", lambda: False)
+
+    controller._poll_camera_health_if_idle()
+
+    health = controller.get_health()
+
+    assert health.level == HealthLevel.ERROR
+    assert health.code == HealthCode.CAMERA_NOT_DETECTED
+    assert controller._get_health_source() == HealthSource.CAPTURE
+    assert health.message == "Camera not detected"
+
+
+def test_take_photo_enqueued_before_ready_is_not_lost(tmp_path):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera, tmp_path)
+    controller.countdown_seconds = 0
+
+    controller.start()
+
+    # Start session and IMMEDIATELY enqueue TAKE_PHOTO
+    controller.enqueue(Command(CommandType.START_SESSION))
+    controller.enqueue(Command(CommandType.TAKE_PHOTO))
+
+    # Photo should still be taken
+    wait_for(lambda: controller.photos_taken == 1)
+
+
+def test_take_photo_ignored_when_busy(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera, tmp_path)
+
+    # Simulate busy state
+    controller.state = ControllerState.COUNTDOWN
+
+    # Spy on begin_photo_capture
+    called = {"n": 0}
+
+    def fake_begin():
+        called["n"] += 1
+
+    monkeypatch.setattr(
+        controller._session_flow,
+        "begin_photo_capture",
+        fake_begin,
+    )
+
+    # Spy on queue.put
+    put_called = {"n": 0}
+
+    def fake_put(_cmd):
+        put_called["n"] += 1
+
+    monkeypatch.setattr(controller.command_queue, "put", fake_put)
+
+    controller._handle_command(Command(CommandType.TAKE_PHOTO))
+
+    # ---- Assertions ----
+    assert called["n"] == 0, "Should not start capture while busy"
+    assert put_called["n"] == 0, "Should not re-enqueue while busy"
+
+
+def test_take_photo_reenqueued_when_not_ready_and_not_busy(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera, tmp_path)
+
+    # State is neither READY nor busy
+    controller.state = ControllerState.IDLE
+
+    # Spy on begin_photo_capture
+    called = {"n": 0}
+
+    def fake_begin():
+        called["n"] += 1
+
+    monkeypatch.setattr(
+        controller._session_flow,
+        "begin_photo_capture",
+        fake_begin,
+    )
+
+    # Spy on queue.put
+    put_args = []
+
+    def fake_put(cmd):
+        put_args.append(cmd)
+
+    monkeypatch.setattr(controller.command_queue, "put", fake_put)
+
+    cmd = Command(CommandType.TAKE_PHOTO)
+    controller._handle_command(cmd)
+
+    # ---- Assertions ----
+    assert called["n"] == 0, "Should not start capture immediately"
+    assert len(put_args) == 1, "Command should be re-enqueued"
+    assert put_args[0] is cmd, "Same command object should be re-queued"

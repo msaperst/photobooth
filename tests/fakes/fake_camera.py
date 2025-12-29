@@ -3,7 +3,7 @@
 from datetime import datetime
 from pathlib import Path
 
-from controller.camera import Camera
+from controller.camera_base import Camera
 
 CAMERA_NOT_CONNECTED = "Camera not connected"
 

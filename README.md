@@ -17,7 +17,7 @@ conditions**.
 * No operator required for normal operation
 * Single, authoritative hardware controller (no race conditions)
 * Offline operation (no internet required)
-* Guests receive clear feedback (live view + countdown)
+* Guests receive clear feedback (countdown, progress, and error states)
 * Easy reprints and recovery when something goes wrong
 * Fully documented so the system can be rebuilt under pressure
 
@@ -63,7 +63,9 @@ conditions**.
 
 ## System Flow Overview
 
-1. Guests see themselves on the iPad live preview
+1. Guests position themselves using physical markers and
+   on-screen guidance (Live camera preview is intentionally
+   disabled for noise, reliability, and hardware longevity)
 2. Guest selects number of prints and taps **Start**
 3. UI sends request to Pi API
 4. Pi enqueues a session command
@@ -83,8 +85,9 @@ conditions**.
 The controller operates as a strict state machine:
 
 * `IDLE`
+* `READY_FOR_PHOTO`
 * `COUNTDOWN`
-* `CAPTURING`
+* `CAPTURING_PHOTO`
 * `PROCESSING`
 * `PRINTING`
 * `IDLE`
@@ -197,9 +200,74 @@ Project documentation.
 
 ### Control
 
-* gphoto2 used exclusively
-* Live view via `gphoto2 --capture-movie`
-* Capture triggered by controller only
+* Camera is controlled exclusively via gphoto2
+* Live view is intentionally disabled
+* Camera is accessed only for:
+    - Health checks
+    - Image capture
+
+Disabling live view reduces shutter chatter, USB contention, and camera wear,
+and significantly improves reliability during long events.
+
+---
+
+## Why No Live View?
+
+Although live camera preview is common in photobooth systems, **Photobooth v2 intentionally does not use live view** by
+default.
+
+This decision is based on real-world event reliability, not technical limitations.
+
+### Reasons
+
+**1. Mechanical Noise & Guest Experience**  
+On cameras like the Nikon D750, USB live view causes continual mirror/shutter activity.
+This is distracting, noisy, and undesirable in quiet or formal event environments.
+
+**2. Reliability Under Load**  
+Live view significantly increases:
+
+- USB traffic
+- Camera state churn
+- gphoto2 contention
+
+Disabling live view dramatically reduces:
+
+- dropped connections
+- intermittent “device busy” errors
+- long-running instability during multi-hour events
+
+**3. Health Monitoring Should Be Intent-Driven**  
+Camera health is more reliably detected through:
+
+- explicit health checks when idle
+- real capture attempts
+- failure of actual work, not background streaming
+
+This avoids false positives and unnecessary hardware stress.
+
+**4. Future-Proofing**  
+Not all cameras support stable USB live view.
+By designing the system to function without it:
+
+- camera models can be swapped more easily
+- HDMI-based preview or external monitors remain viable options
+- the controller remains hardware-agnostic
+
+### What Guests See Instead
+
+- Physical positioning markers
+- Clear countdown UI
+- Explicit progress and error states
+
+In practice, this results in:
+
+- quieter operation
+- fewer failures
+- faster recovery
+- better unattended reliability
+
+Live view may be reintroduced **only if a future camera supports it cleanly and silently**.
 
 ---
 
@@ -267,14 +335,6 @@ Returns:
   "countdown": 3
 }
 ```
-
-### Live View
-
-```http
-GET /live-view
-```
-
-Serves MJPEG stream.
 
 ---
 

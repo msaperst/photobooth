@@ -72,12 +72,6 @@ class SessionFlow:
             self._controller.state = ControllerState.CAPTURING_PHOTO
 
         try:
-            # Stop preview, capture
-            try:
-                self._controller.camera.stop_live_view()
-            except Exception:
-                pass
-
             path = self._controller.camera.capture(
                 self._controller._session_storage.photos_dir
             )
@@ -104,18 +98,6 @@ class SessionFlow:
 
         with self._controller._state_lock:
             self._controller.photos_taken += 1
-
-        # Restart preview (best effort). If it fails, worker will attempt recovery.
-        try:
-            self._controller.camera.start_live_view()
-        except Exception:
-            self._controller._set_camera_error(
-                HealthCode.CAMERA_NOT_DETECTED,
-                "Camera reconnected, but live preview could not be restarted",
-                source=HealthSource.CAPTURE,
-            )
-
-        with self._controller._state_lock:
             if self._controller.photos_taken < self._controller.total_photos:
                 self._controller.state = ControllerState.READY_FOR_PHOTO
                 return

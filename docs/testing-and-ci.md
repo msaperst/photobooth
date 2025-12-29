@@ -46,6 +46,7 @@ Current test coverage includes:
     - `/status` response shape
     - `/start-session` success and rejection logic
 - Boundary conditions (e.g. rejecting concurrent sessions)
+- Intent deferral and command re-queuing behavior
 
 What is **not** tested yet:
 

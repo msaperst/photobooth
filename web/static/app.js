@@ -112,32 +112,6 @@ async function handleButtonClick() {
     }
 }
 
-/* ---------- Live View ---------- */
-
-let lastObjectUrl = null;
-
-async function pollLiveView() {
-    if (!serverReachable) return;
-
-    const img = document.getElementById("liveView");
-    if (!img) return;
-
-    try {
-        const resp = await fetch(`/live-view?ts=${Date.now()}`);
-        if (resp.status === 204 || !resp.ok) return;
-
-        const blob = await resp.blob();
-        const url = URL.createObjectURL(blob);
-
-        if (lastObjectUrl) URL.revokeObjectURL(lastObjectUrl);
-        lastObjectUrl = url;
-
-        img.src = url;
-    } catch {
-        // Connection loss is handled by main poll loop
-    }
-}
-
 /* ---------- Poll Loop ---------- */
 
 async function poll() {
@@ -187,9 +161,6 @@ function initUI() {
 
     setInterval(poll, 500);
     poll();
-
-    setInterval(pollLiveView, 400);
-    pollLiveView();
 }
 
 if (isBrowser) {
