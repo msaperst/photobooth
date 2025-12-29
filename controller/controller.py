@@ -146,9 +146,19 @@ class PhotoboothController:
             if self.state == ControllerState.IDLE:
                 self._session_flow.start_session(command.payload)
 
+
         elif command.command_type == CommandType.TAKE_PHOTO:
-            if self.state == ControllerState.READY_FOR_PHOTO:
+            with self._state_lock:
+                state = self.state
+
+            if state == ControllerState.READY_FOR_PHOTO:
                 self._session_flow.begin_photo_capture()
+            else:
+                # Ignore only if we are truly busy; do NOT consume early clicks
+                if state in (ControllerState.COUNTDOWN, ControllerState.CAPTURING_PHOTO):
+                    return
+                # If the UI raced the READY transition, retry shortly
+                self.command_queue.put(command)
 
     def _begin_photo_capture(self):
         self._session_flow.begin_photo_capture()

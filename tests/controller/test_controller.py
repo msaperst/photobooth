@@ -512,3 +512,88 @@ def test_poll_camera_health_sets_error_when_health_check_returns_false(tmp_path,
     assert health.code == HealthCode.CAMERA_NOT_DETECTED
     assert controller._get_health_source() == HealthSource.CAPTURE
     assert health.message == "Camera not detected"
+
+
+def test_take_photo_enqueued_before_ready_is_not_lost(tmp_path):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera, tmp_path)
+    controller.countdown_seconds = 0
+
+    controller.start()
+
+    # Start session and IMMEDIATELY enqueue TAKE_PHOTO
+    controller.enqueue(Command(CommandType.START_SESSION))
+    controller.enqueue(Command(CommandType.TAKE_PHOTO))
+
+    # Photo should still be taken
+    wait_for(lambda: controller.photos_taken == 1)
+
+
+def test_take_photo_ignored_when_busy(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera, tmp_path)
+
+    # Simulate busy state
+    controller.state = ControllerState.COUNTDOWN
+
+    # Spy on begin_photo_capture
+    called = {"n": 0}
+
+    def fake_begin():
+        called["n"] += 1
+
+    monkeypatch.setattr(
+        controller._session_flow,
+        "begin_photo_capture",
+        fake_begin,
+    )
+
+    # Spy on queue.put
+    put_called = {"n": 0}
+
+    def fake_put(_cmd):
+        put_called["n"] += 1
+
+    monkeypatch.setattr(controller.command_queue, "put", fake_put)
+
+    controller._handle_command(Command(CommandType.TAKE_PHOTO))
+
+    # ---- Assertions ----
+    assert called["n"] == 0, "Should not start capture while busy"
+    assert put_called["n"] == 0, "Should not re-enqueue while busy"
+
+
+def test_take_photo_reenqueued_when_not_ready_and_not_busy(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera, tmp_path)
+
+    # State is neither READY nor busy
+    controller.state = ControllerState.IDLE
+
+    # Spy on begin_photo_capture
+    called = {"n": 0}
+
+    def fake_begin():
+        called["n"] += 1
+
+    monkeypatch.setattr(
+        controller._session_flow,
+        "begin_photo_capture",
+        fake_begin,
+    )
+
+    # Spy on queue.put
+    put_args = []
+
+    def fake_put(cmd):
+        put_args.append(cmd)
+
+    monkeypatch.setattr(controller.command_queue, "put", fake_put)
+
+    cmd = Command(CommandType.TAKE_PHOTO)
+    controller._handle_command(cmd)
+
+    # ---- Assertions ----
+    assert called["n"] == 0, "Should not start capture immediately"
+    assert len(put_args) == 1, "Command should be re-enqueued"
+    assert put_args[0] is cmd, "Same command object should be re-queued"
