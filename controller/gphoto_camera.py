@@ -3,7 +3,7 @@ import threading
 from datetime import datetime
 from pathlib import Path
 
-from controller.camera import Camera, CameraError
+from controller.camera_base import Camera, CameraError
 
 
 class GPhotoCamera(Camera):

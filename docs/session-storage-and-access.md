@@ -4,6 +4,8 @@
 
 All captured photos and generated photo strips are stored under a single, canonical root directory on the Raspberry Pi:
 
+Live preview images are never stored on disk.
+
 ```
 /home/max/photobooth/
 └── sessions/

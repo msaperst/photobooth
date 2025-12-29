@@ -79,7 +79,7 @@ On the camera body:
 - Wi-Fi: OFF
 - Auto power off: Long / Disabled
 - USB mode: (Nikon auto-detects, no menu option needed)
-- Live View: OFF for now
+- Live View: OFF (intentionally unused by the photobooth)
 - Lens: AF-S or manual focus (your choice)
 
 Power ON the camera.

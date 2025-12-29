@@ -9,9 +9,9 @@ The goal is clarity, predictability, and zero technical intervention.
 
 ## Overview
 
-The photobooth continuously monitors camera health by observing real usage:
+The photobooth monitors camera health through:
 
-- Live preview frames
+- Explicit health checks when idle
 - Photo capture success or failure
 
 When an error is detected:
@@ -39,7 +39,7 @@ The camera is powered off, unplugged, or otherwise not responding.
 **Behavior**
 
 - Booth interaction is disabled
-- Live preview stops
+- New sessions and captures are blocked
 - When the camera reconnects, the booth resumes automatically
 
 ---
@@ -119,9 +119,12 @@ The camera is powered off, unplugged, or otherwise not responding.
 ## Design Notes
 
 - Sessions are intentionally **not auto-resumed**
-- Partial sessions are cancelled cleanly
+- Partial sessions are canceled cleanly
 - This avoids confusion and unexpected behavior
 - Automatic recovery is limited to restoring hardware availability
+
+Camera recovery is passive and state-aware.
+The system does not rely on continuous camera streaming to detect availability.
 
 ---
 

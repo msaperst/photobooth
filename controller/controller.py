@@ -17,7 +17,7 @@ from pathlib import Path
 from queue import Queue, Empty
 from typing import Optional
 
-from controller.camera import Camera
+from controller.camera_base import Camera
 from controller.health import HealthStatus, HealthCode, HealthLevel, HealthSource
 from controller.session_flow import SessionFlow
 
