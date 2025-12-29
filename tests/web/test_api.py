@@ -69,23 +69,6 @@ def test_take_photo_ok_when_ready(client, monkeypatch):
     assert "command" in called
 
 
-def test_take_photo_rejected_when_not_ready(client, monkeypatch):
-    monkeypatch.setattr(
-        client.application.controller,
-        "get_status",
-        lambda: {
-            "state": "COUNTDOWN",
-            "busy": True,
-            "photos_taken": 1,
-            "total_photos": 3,
-            "countdown_remaining": 2,
-        },
-    )
-
-    response = client.post("/take-photo")
-    assert response.status_code == 409
-
-
 def test_index_page_renders(client):
     response = client.get("/")
     assert response.status_code == 200

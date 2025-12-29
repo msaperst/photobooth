@@ -58,15 +58,9 @@ def create_app(camera=None, image_root: Path | None = None):
 
     @app.route("/take-photo", methods=["POST"])
     def take_photo():
-        status = app.controller.get_status()
-
-        if status["state"] != "READY_FOR_PHOTO":
-            return jsonify({"ok": False, "error": "not_ready"}), 409
-
         app.controller.enqueue(
             Command(CommandType.TAKE_PHOTO)
         )
-
         return jsonify({"ok": True})
 
     @app.route("/sessions/<path:filename>")
