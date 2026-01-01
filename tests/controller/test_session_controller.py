@@ -15,6 +15,7 @@ def test_session_storage_creates_expected_paths(tmp_path):
     assert storage.photos_dir.exists()
     assert storage.photos_dir.is_dir()
     assert storage.strip_path.parent == storage.session_dir
+    assert storage.print_path.parent == storage.session_dir
 
 
 from controller.controller import PhotoboothController, ControllerState, Command, CommandType
@@ -36,10 +37,18 @@ def test_finish_session_saves_strip(tmp_path, monkeypatch):
         def save(self, path):
             saved_paths.append(path)
 
-    # Patch render_strip to return our fake strip
+    class FakeSheet:
+        def save(self, path, **kwargs):
+            saved_paths.append(path)
+
     monkeypatch.setattr(
         "controller.session_flow.render_strip",
         lambda *args, **kwargs: FakeStrip(),
+    )
+
+    monkeypatch.setattr(
+        "controller.session_flow.render_print_sheet",
+        lambda *args, **kwargs: FakeSheet(),
     )
 
     controller.start()
@@ -59,9 +68,7 @@ def test_finish_session_saves_strip(tmp_path, monkeypatch):
 
     wait_for(lambda: controller.state == ControllerState.IDLE)
 
-    # ---- Assertions ----
-    assert len(saved_paths) == 1
-    assert saved_paths[0].name == "strip.jpg"
+    assert [p.name for p in saved_paths] == ["strip.jpg", "print.jpg"]
 
     health = controller.get_health()
     assert health.level == HealthLevel.OK
