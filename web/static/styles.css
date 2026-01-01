@@ -87,23 +87,6 @@ button:disabled {
     cursor: not-allowed;
 }
 
-/* Live View */
-
-.live-view {
-    display: flex;
-    justify-content: center;
-    margin-bottom: 2rem;
-}
-
-#liveView {
-    width: 100%;
-    max-width: 720px;
-    aspect-ratio: 3 / 2;
-    background-color: #000;
-    border-radius: 12px;
-    object-fit: cover;
-}
-
 /* Error messages */
 
 .health-overlay {

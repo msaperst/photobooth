@@ -1,14 +1,25 @@
 """
 Photobooth controller
 
-Single authoritative owner of camera and session state.
+Single authoritative owner of system state and the only component allowed to touch hardware
+(camera and, later, printer).
 
-Goals:
-- Command loop never blocks on slow camera I/O
-- Live view worker always runs (enables recovery when camera is off at boot)
-- Camera-off-at-boot -> turning camera on later recovers automatically
-- No "red flash" after capture (debounced live-view failures)
-- Specific capture-failure error messages are not overwritten by generic ones
+Core responsibilities:
+- Own the session state machine and expose read-only status to the web UI
+- Serialize user actions via a command queue processed by a single controller loop
+- Delegate long-running operations (capture countdown, camera I/O, image processing, printing)
+  to internal worker threads that report results back to the controller via explicit state updates
+- Surface failures via the Health model (sticky errors with explicit ownership)
+
+Notes about workers:
+- The controller loop remains responsive while capture/processing/printing run in worker threads.
+- Workers must update state under the controller's locks and must set Health errors explicitly on failure.
+- UI should never block on hardware operations; it polls /status and /health.
+
+Configuration (event-level):
+- strip_logo_path: Path to the logo used in strip/print rendering
+- event_album_code: Operator-provided album code rendered under each printed strip
+  Both are currently configured on PhotoboothController.__init__ for easy one-place editing.
 """
 
 import threading

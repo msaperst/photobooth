@@ -35,7 +35,6 @@ conditions**.
 **iPad (UI only)**
 
 * Touchscreen controls
-* Live camera preview
 * Countdown display
 * Print count selection
 * Connects via local Wi‑Fi to the Raspberry Pi
@@ -63,20 +62,29 @@ conditions**.
 
 ## System Flow Overview
 
-1. Guests position themselves using physical markers and
-   on-screen guidance (Live camera preview is intentionally
-   disabled for noise, reliability, and hardware longevity)
-2. Guest selects number of prints and taps **Start**
-3. UI sends request to Pi API
-4. Pi enqueues a session command
-5. Controller executes:
+1. Guests position themselves using physical markers and on-screen guidance.
+   (Live camera preview is intentionally disabled for noise, reliability, and hardware longevity.)
 
-    * Countdown
-    * Photo capture loop
-    * Image processing
-    * Printing
-6. Status updates are streamed back to the UI
-7. System returns to idle
+2. Guest selects the number of strips to print (2/4/6/8) and taps **Start**.
+
+3. UI sends `POST /start-session` with:
+    - `image_count` (currently always 3)
+    - `print_count` (number of print sheets; 2 strips per sheet)
+
+4. The controller transitions to an active session and becomes ready for the first photo.
+
+5. Photo capture is guest-driven using the same on-screen button:
+    - Each tap triggers `POST /take-photo`
+    - The controller runs a countdown, captures a photo, and returns to READY_FOR_PHOTO
+    - This repeats until all photos are captured
+
+6. After the final photo, the controller processes the session:
+    - Generates `strip.jpg` (600x1596, printer-agnostic)
+    - Generates `print.jpg` (1200x1800 @300 DPI; two strips side-by-side; print-only text under each)
+
+7. Printing (CUPS) is started asynchronously so the UI is not blocked.
+   The system returns to IDLE so the next guests can begin while the printer finishes.
+   Any printer errors are surfaced through `/health`.
 
 ---
 
@@ -107,6 +115,31 @@ Key directories and their purpose:
 - `docs/` — project documentation and operational notes.
 
 Runtime session data is written under `<image_root>/sessions/...` (see `docs/session-storage-and-access.md`).
+
+---
+
+## Event Configuration (Album Code + Logo)
+
+Two event-level values are configured directly in the controller for now (intentionally simple for MVP):
+
+1) Album code (printed under each strip on the print sheet)
+
+- File: `controller/controller.py`
+- Field: `PhotoboothController.event_album_code`
+- Example (current):
+  `self.event_album_code = "MaxMitzvah2026"`
+
+2) Logo used in strip + print rendering
+
+- File: `controller/controller.py`
+- Field: `PhotoboothController.strip_logo_path`
+- Default location (current):
+  `imaging/logo.png`
+
+To update the logo, replace the file at `imaging/logo.png` (or change `strip_logo_path` to point elsewhere).
+The logo is required for strip creation.
+
+---
 
 ## Camera Configuration
 
