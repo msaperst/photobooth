@@ -1,10 +1,10 @@
 from pathlib import Path
 
 import pytest
-from PIL import Image
+from PIL import Image, ImageFont
 
 from imaging.print_layout import PrintLayout
-from imaging.print_renderer import render_print_sheet
+from imaging.print_renderer import render_print_sheet, _load_font
 from imaging.strip_errors import StripCreationError
 
 
@@ -143,3 +143,56 @@ def test_print_seam_in_text_region_is_background():
     # Strictest: require zero. If you ever see flaky failures due to antialiasing,
     # change to a tiny threshold like <= 5.
     assert non_bg == 0, f"Expected seam band to be background; found {non_bg}/{total} non-bg pixels"
+
+
+def test_load_font_uses_explicit_font_path(monkeypatch):
+    sentinel = object()
+
+    def fake_truetype(path, size):
+        # When a font_path is provided, we should load exactly that path
+        assert path == "/tmp/custom.ttf"
+        assert size == 12
+        return sentinel
+
+    monkeypatch.setattr(ImageFont, "truetype", fake_truetype)
+
+    font = _load_font("/tmp/custom.ttf", 12)
+    assert font is sentinel
+
+
+def test_load_font_falls_back_to_default_when_dejavu_missing(monkeypatch):
+    sentinel_default = object()
+
+    def fake_truetype(path, size):
+        # Simulate DejaVu load failure
+        assert path == "DejaVuSans.ttf"
+        raise OSError("no font available")
+
+    def fake_load_default():
+        return sentinel_default
+
+    monkeypatch.setattr(ImageFont, "truetype", fake_truetype)
+    monkeypatch.setattr(ImageFont, "load_default", fake_load_default)
+
+    font = _load_font(None, 12)
+    assert font is sentinel_default
+
+
+def test_load_font_falls_back_when_explicit_font_path_fails(monkeypatch):
+    sentinel = object()
+
+    calls = []
+
+    def fake_truetype(path, size):
+        calls.append(path)
+        if path == "/tmp/custom.ttf":
+            raise OSError("bad font path")
+        if path == "DejaVuSans.ttf":
+            return sentinel
+        raise AssertionError("Unexpected font path")
+
+    monkeypatch.setattr(ImageFont, "truetype", fake_truetype)
+
+    font = _load_font("/tmp/custom.ttf", 12)
+    assert font is sentinel
+    assert calls == ["/tmp/custom.ttf", "DejaVuSans.ttf"]
