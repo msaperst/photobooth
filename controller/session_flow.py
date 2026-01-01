@@ -147,8 +147,20 @@ class SessionFlow:
             )
             sheet.save(storage.print_path, dpi=(300, 300))
 
+
+
         except StripCreationError as e:
             self._controller._set_processing_error(str(e))
+            with self._controller._state_lock:
+                self._controller.session_active = False
+                self._controller.state = ControllerState.IDLE
+            return
+
+
+        except Exception as e:
+            self._controller._set_processing_error(
+                f"Unexpected processing error: {type(e).__name__}: {e}"
+            )
             with self._controller._state_lock:
                 self._controller.session_active = False
                 self._controller.state = ControllerState.IDLE

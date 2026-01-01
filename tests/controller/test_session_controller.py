@@ -87,3 +87,44 @@ def test_finish_session_worker_clears_session_and_returns_idle(tmp_path, monkeyp
 
     assert controller.session_active is False
     assert controller.state == ControllerState.IDLE
+
+
+def test_finish_session_recovers_from_unexpected_processing_exception(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera, tmp_path)
+
+    controller.countdown_seconds = 0
+    monkeypatch.setattr("time.sleep", lambda _: None)
+
+    class ExplodingStrip:
+        def save(self, path):
+            raise RuntimeError("disk full")
+
+    # Make render_strip succeed but saving fail with a non-StripCreationError
+    monkeypatch.setattr(
+        "controller.session_flow.render_strip",
+        lambda *args, **kwargs: ExplodingStrip(),
+    )
+
+    # Start controller loop
+    controller.start()
+
+    # Start a 1-photo session
+    controller.enqueue(
+        Command(CommandType.START_SESSION, payload={"image_count": 1})
+    )
+    wait_for(lambda: controller.state == ControllerState.READY_FOR_PHOTO)
+
+    # Take the single photo (triggers finish worker)
+    controller.enqueue(Command(CommandType.TAKE_PHOTO))
+
+    # Controller must recover to IDLE (not stranded in PROCESSING)
+    wait_for(lambda: controller.state == ControllerState.IDLE)
+
+    # Session should be cleared and health should show error
+    assert controller.session_active is False
+
+    health = controller.get_health()
+    assert health.level == HealthLevel.ERROR
+    assert health.message is not None
+    assert "disk full" in health.message
