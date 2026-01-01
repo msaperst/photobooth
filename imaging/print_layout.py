@@ -6,19 +6,19 @@ from typing import Tuple
 
 @dataclass(frozen=True)
 class PrintLayout:
-    """Layout settings for the print artifact.
-
-    This layout is intentionally separate from strip creation.
-    """
+    """Layout settings for the print artifact (separate from strip creation)."""
 
     canvas_size: Tuple[int, int]  # (width, height)
     dpi: int
     strip_size: Tuple[int, int]  # expected (width, height) of strip images
     background_color: Tuple[int, int, int]
 
-    # Text region (print-only). Coordinates are in print-canvas pixels.
-    text_box_origin: Tuple[int, int]  # (x, y)
-    text_box_size: Tuple[int, int]  # (width, height)
+    # Strip-internal padding (used to align text with strip content)
+    strip_inner_padding: int  # e.g. 12
+
+    # Print-only text region per strip (same size, drawn twice)
+    text_box_size: Tuple[int, int]  # (width, height) -> (576, 192)
+    text_top_y: int  # y coordinate where text region begins -> 1596
     text_color: Tuple[int, int, int]
 
     # Typography (best-effort; font loading falls back to PIL default)
