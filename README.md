@@ -107,7 +107,6 @@ Key directories and their purpose:
 - `docs/` — project documentation and operational notes.
 
 Runtime session data is written under `<image_root>/sessions/...` (see `docs/session-storage-and-access.md`).
-Strip/print sizing and responsibilities are defined in `docs/strip-vs-print-contract.md`.
 
 ## Camera Configuration
 
@@ -206,6 +205,8 @@ Live view may be reintroduced **only if a future camera supports it cleanly and 
 * Better driver support
 
 Printing is handled synchronously and sequentially to avoid printer overload.
+
+Strip/print sizing and responsibilities are defined in `docs/strip-vs-print-contract.md`.
 
 ---
 
