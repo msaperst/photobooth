@@ -116,12 +116,11 @@ class SessionFlow:
             strip = render_strip(
                 image_paths=self._controller._captured_image_paths,
                 layout=StripLayout(
-                    photo_size=(600, 400),
-                    padding=20,
+                    photo_size=(576, 384),
+                    padding=12,
                     background_color=(255, 255, 255),
-                    logo_path=None
-                    # logo_path=self._controller.strip_logo_path,
-                    # logo_size=(600, 400)
+                    logo_path=self._controller.strip_logo_path,
+                    logo_size=(576, 384),
                 ),
             )
 
