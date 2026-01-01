@@ -8,109 +8,176 @@ from imaging.strip_layout import StripLayout
 from imaging.strip_renderer import render_strip
 
 
-def make_image(path: Path, size=(50, 50), color=(255, 0, 0)):
+def make_image(path: Path, size=(300, 200), color=(255, 0, 0)):
     img = Image.new("RGB", size, color)
     img.save(path)
 
 
-def test_strip_renders_images_vertically(tmp_path):
+def test_render_strip_requires_exactly_three_photos(tmp_path):
+    logo = tmp_path / "logo.png"
+    make_image(logo, size=(900, 600), color=(0, 0, 255))
+
+    layout = StripLayout(
+        photo_size=(576, 384),
+        padding=12,
+        background_color=(255, 255, 255),
+        logo_path=logo,
+        logo_size=(576, 384),
+    )
+
     img1 = tmp_path / "1.jpg"
-    img2 = tmp_path / "2.jpg"
-    make_image(img1, size=(50, 50), color=(255, 0, 0))
-    make_image(img2, size=(50, 50), color=(0, 255, 0))
+    make_image(img1)
+
+    with pytest.raises(StripCreationError, match="exactly 3 photos"):
+        render_strip([img1], layout)
+
+
+def test_render_strip_requires_logo(tmp_path):
+    imgs = []
+    for i in range(3):
+        p = tmp_path / f"{i}.jpg"
+        make_image(p)
+        imgs.append(p)
 
     layout = StripLayout(
-        photo_size=(50, 50),
-        padding=10,
+        photo_size=(576, 384),
+        padding=12,
         background_color=(255, 255, 255),
+        logo_path=None,
+        logo_size=(576, 384),
     )
 
-    strip = render_strip([img1, img2], layout)
+    with pytest.raises(StripCreationError, match="Logo is required"):
+        render_strip(imgs, layout)
 
-    assert strip.size[0] == 70  # 50 + 2*10
 
+def test_render_strip_output_size_matches_spec(tmp_path):
+    imgs = []
+    for i in range(3):
+        p = tmp_path / f"{i}.jpg"
+        make_image(p, size=(6016, 4016), color=(255, 0, 0))
+        imgs.append(p)
 
-def test_render_strip_raises_when_no_images():
+    logo = tmp_path / "logo.png"
+    make_image(logo, size=(900, 600), color=(0, 0, 255))
+
     layout = StripLayout(
-        photo_size=(50, 50),
-        padding=10,
+        photo_size=(576, 384),
+        padding=12,
         background_color=(255, 255, 255),
+        logo_path=logo,
+        logo_size=(576, 384),
     )
 
-    with pytest.raises(StripCreationError, match="No images provided"):
-        render_strip([], layout)
+    strip = render_strip(imgs, layout)
+    assert strip.size == (600, 1596)
 
 
-def test_render_strip_raises_when_image_cannot_be_loaded(tmp_path):
-    bad_path = tmp_path / "does_not_exist.jpg"
+def test_render_strip_preserves_aspect_ratio_letterboxes(tmp_path):
+    """A square input should be letterboxed into the 3:2 tile."""
+    imgs = []
+    for i in range(3):
+        p = tmp_path / f"{i}.jpg"
+        # Square image to force letterboxing
+        make_image(p, size=(500, 500), color=(10, 200, 10))
+        imgs.append(p)
 
+    logo = tmp_path / "logo.png"
+    make_image(logo, size=(900, 600), color=(0, 0, 255))
+
+    bg = (255, 255, 255)
     layout = StripLayout(
-        photo_size=(50, 50),
-        padding=10,
-        background_color=(255, 255, 255),
+        photo_size=(576, 384),
+        padding=12,
+        background_color=bg,
+        logo_path=logo,
+        logo_size=(576, 384),
     )
 
-    with pytest.raises(StripCreationError, match="Failed to load image"):
-        render_strip([bad_path], layout)
+    strip = render_strip(imgs, layout)
+
+    # Sample within the first photo tile.
+    tile_x0 = 12
+    tile_y0 = 12
+
+    # Square -> fit-to-height (384), width becomes 384, leaving side padding.
+    # So left edge inside tile should be background.
+    assert strip.getpixel((tile_x0 + 1, tile_y0 + 10)) == bg
+    assert strip.getpixel((tile_x0 + 574, tile_y0 + 10)) == bg
+
+    # Center should be the image color (not background).
+    center = strip.getpixel((tile_x0 + 288, tile_y0 + 192))
+    assert center != bg
 
 
-def test_render_strip_raises_when_logo_path_missing(tmp_path):
-    img = tmp_path / "photo.jpg"
-    make_image(img)
+def test_fit_preserve_aspect_invalid_dimensions():
+    from imaging.strip_renderer import _fit_preserve_aspect
+
+    class FakeImage:
+        size = (0, 10)
+
+    with pytest.raises(StripCreationError, match="Invalid image dimensions"):
+        _fit_preserve_aspect(FakeImage(), (100, 100), (255, 255, 255))
+
+
+def test_render_strip_logo_size_none(tmp_path):
+    imgs = []
+    for i in range(3):
+        p = tmp_path / f"{i}.jpg"
+        Image.new("RGB", (10, 10)).save(p)
+        imgs.append(p)
+
+    logo = tmp_path / "logo.png"
+    Image.new("RGB", (10, 10)).save(logo)
 
     layout = StripLayout(
-        photo_size=(50, 50),
-        padding=10,
+        photo_size=(576, 384),
+        padding=12,
         background_color=(255, 255, 255),
-        logo_path=tmp_path / "missing_logo.jpg",
-        logo_size=(30, 30),
+        logo_path=logo,
+        logo_size=None,
+    )
+
+    with pytest.raises(StripCreationError, match="Logo size is required"):
+        render_strip(imgs, layout)
+
+
+def test_render_strip_logo_missing(tmp_path):
+    imgs = []
+    for i in range(3):
+        p = tmp_path / f"{i}.jpg"
+        Image.new("RGB", (10, 10)).save(p)
+        imgs.append(p)
+
+    layout = StripLayout(
+        photo_size=(576, 384),
+        padding=12,
+        background_color=(255, 255, 255),
+        logo_path=tmp_path / "missing.png",
+        logo_size=(576, 384),
     )
 
     with pytest.raises(StripCreationError, match="logo file does not exist"):
-        render_strip([img], layout)
+        render_strip(imgs, layout)
 
 
-def test_render_strip_raises_when_logo_cannot_be_loaded(tmp_path):
-    img = tmp_path / "photo.jpg"
-    make_image(img)
+def test_render_strip_logo_corrupt(tmp_path):
+    imgs = []
+    for i in range(3):
+        p = tmp_path / f"{i}.jpg"
+        Image.new("RGB", (10, 10)).save(p)
+        imgs.append(p)
 
-    logo = tmp_path / "logo.jpg"
-    logo.write_bytes(b"not an image")
+    logo = tmp_path / "logo.png"
+    logo.write_text("not an image")
 
     layout = StripLayout(
-        photo_size=(50, 50),
-        padding=10,
+        photo_size=(576, 384),
+        padding=12,
         background_color=(255, 255, 255),
         logo_path=logo,
-        logo_size=(30, 30),
+        logo_size=(576, 384),
     )
 
     with pytest.raises(StripCreationError, match="Failed to load logo image"):
-        render_strip([img], layout)
-
-
-def test_render_strip_pastes_logo_at_bottom(tmp_path):
-    photo = tmp_path / "photo.jpg"
-    logo = tmp_path / "logo.jpg"
-
-    make_image(photo, color=(255, 0, 0))
-    make_image(logo, size=(50, 50), color=(0, 0, 255))
-
-    layout = StripLayout(
-        photo_size=(50, 50),
-        padding=10,
-        background_color=(255, 255, 255),
-        logo_path=logo,
-        logo_size=(50, 50),
-    )
-
-    strip = render_strip([photo], layout)
-
-    # Sample a pixel well inside the logo area
-    x = layout.padding + 10
-    y = layout.padding + layout.photo_size[1] + layout.padding + 10
-
-    r, g, b = strip.getpixel((x, y))
-    assert b > 250
-    assert r < 5
-    assert g < 5
+        render_strip(imgs, layout)

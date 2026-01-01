@@ -98,95 +98,15 @@ State is exposed read‑only to the UI via `/status`.
 
 ## Directory Structure
 
-The repository is organized to clearly separate **hardware control**, **user interaction**, **runtime data**, and *
-*documentation**.  
-This separation is intentional and is critical for reliability and maintainability.
+Key directories and their purpose:
 
-```text
-photobooth/
-├── controller/
-│   ├── __init__.py
-│   ├── controller.py
-│   ├── camera.py
-│   ├── printer.py
-│   └── image_processing.py
-│
-├── web/
-│   ├── __init__.py
-│   ├── app.py
-│   ├── templates/
-│   └── static/
-│
-├── sessions/
-│   └── .gitkeep
-│
-├── scripts/
-│   ├── setup_os.sh
-│   ├── setup_printer.sh
-│   └── setup_wifi_ap.sh
-│
-├── docs/
-│   ├── Step-0-Raspberry-Pi-Setup.md
-│   └── testing-and-ci.md
-│
-├── tests/
-│   ├── __init__.py
-│   ├── controller/
-│   │   └── test_controller.py
-│   └── web/
-│       └── test_api.py
-│
-├── requirements.txt
-├── .gitignore
-└── README.md
-```
+- `controller/` — single source of truth for system state (sessions, health, command queue) and all hardware access.
+- `imaging/` — deterministic image processing functions (strip creation, print composition).
+- `web/` — Flask API + web UI assets (the iPad touchscreen client).
+- `tests/` — pytest unit tests (controller rules, imaging, and API behavior). Tests use `tmp_path`; CI must stay green.
+- `docs/` — project documentation and operational notes.
 
-### Directory Responsibilities
-
-`controller/`
-
-Owns **all hardware interaction and session logic.**
-
-- Single authoritative owner of:
-    - Camera control (gphoto2)
-    - Image processing (ImageMagick)
-    - Printing (CUPS)
-- Single-threaded
-- No Flask or web concerns
-
-`web/`
-
-Owns all user interaction.
-
-- Flask app
-- Touchscreen UI
-- Status polling
-- Never talks to hardware directly
-
-`sessions/`
-
-Runtime storage for per-session artifacts.
-
-- Raw captures
-- Processed images
-- Never committed to git
-
-`scripts/`
-
-One-time or infrequently-run system scripts.
-
-- OS helpers
-- Printer setup
-- Wi-Fi access point configuration
-
-`docs/`
-
-Project documentation.
-
-- Step-by-step rebuild docs live here
-- Architecture lives in the README
-
----
+Runtime session data is written under `<image_root>/sessions/...` (see `docs/session-storage-and-access.md`).
 
 ## Camera Configuration
 
@@ -284,7 +204,11 @@ Live view may be reintroduced **only if a future camera supports it cleanly and 
 * Faster print times
 * Better driver support
 
-Printing is handled synchronously and sequentially to avoid printer overload.
+Printing is handled synchronously and sequentially to avoid
+printer overload. Session processing produces `strip.jpg`
+and `print.jpg` (print-ready 1200×1800 @300 DPI).
+
+Strip/print sizing and responsibilities are defined in `docs/strip-vs-print-contract.md`.
 
 ---
 

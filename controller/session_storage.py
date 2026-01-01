@@ -25,5 +25,9 @@ class SessionStorage:
     def strip_path(self) -> Path:
         return self.session_dir / "strip.jpg"
 
+    @property
+    def print_path(self) -> Path:
+        return self.session_dir / "print.jpg"
+
     def prepare(self) -> None:
         self.photos_dir.mkdir(parents=True, exist_ok=False)

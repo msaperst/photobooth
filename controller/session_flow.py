@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING
 
 from controller.health import HealthCode, HealthSource
 from controller.session_storage import SessionStorage
+from imaging.print_layout import PrintLayout
+from imaging.print_renderer import render_print_sheet
 from imaging.strip_errors import StripCreationError
 from imaging.strip_layout import StripLayout
 from imaging.strip_renderer import render_strip
@@ -113,20 +115,37 @@ class SessionFlow:
         with self._controller._state_lock:
             self._controller.state = ControllerState.PROCESSING
         try:
+            storage = self._controller._session_storage
+
+            # --- Strip creation (canonical) ---
             strip = render_strip(
                 image_paths=self._controller._captured_image_paths,
                 layout=StripLayout(
-                    photo_size=(600, 400),
-                    padding=20,
+                    photo_size=(576, 384),
+                    padding=12,
                     background_color=(255, 255, 255),
-                    logo_path=None
-                    # logo_path=self._controller.strip_logo_path,
-                    # logo_size=(600, 400)
+                    logo_path=self._controller.strip_logo_path,
+                    logo_size=(576, 384),
                 ),
             )
-
-            storage = self._controller._session_storage
             strip.save(storage.strip_path)
+
+            # --- Print asset generation (printer-optimized) ---
+            sheet = render_print_sheet(
+                strip=strip,
+                layout=PrintLayout(
+                    canvas_size=(1200, 1800),
+                    dpi=300,
+                    strip_size=(600, 1596),
+                    background_color=(255, 255, 255),
+                    strip_inner_padding=12,
+                    text_box_size=(576, 192),
+                    text_top_y=1596,
+                    text_color=(0, 0, 0),
+                ),
+                album_code=self._controller.event_album_code,
+            )
+            sheet.save(storage.print_path, dpi=(300, 300))
 
         except StripCreationError as e:
             self._controller._set_processing_error(str(e))

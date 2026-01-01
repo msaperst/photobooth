@@ -68,7 +68,7 @@ Before opening a pull request, tests **must** be run locally.
 From the project root:
 
 ```bash
-pytest --cov=controller --cov=web --cov-report=term-missing
+pytest --cov=controller --cov=web --cov=imaging --cov-report=term-missing
 ```
 
 This will:
@@ -80,7 +80,7 @@ This will:
 To enforce the same coverage threshold as CI:
 
 ```bash
-pytest --cov=controller --cov=web --cov-fail-under=80
+pytest --cov=controller --cov=web --cov=imaging --cov-fail-under=80
 ```
 
 If this command fails locally, CI will fail as well.
@@ -139,7 +139,7 @@ CI performs the following steps:
         - Any test fails
         - Coverage drops below the enforced threshold
 3. For JavaScript
-    1. Sets up Node (currently Python 22)
+    1. Sets up Node (currently Node 22)
     2. Installs dependencies from package-lock.json
     3. Runs all unit tests
     4. Fails if:
