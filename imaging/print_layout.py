@@ -23,7 +23,7 @@ class PrintLayout:
 
     # Typography (best-effort; font loading falls back to PIL default)
     font_path: str | None = None
-    font_size_info: int = 36
-    font_size_link: int = 44
-    font_size_code: int = 36
+    font_size_info: int = 34
+    font_size_link: int = 38
+    font_size_code: int = 34
     line_spacing: int = 4
