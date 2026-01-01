@@ -87,6 +87,8 @@ Derived height check:
 
 ### Print-only Text Area (Locked)
 
+A text box will be placed under each strip (so two total)
+
 - The strip pair is placed at the **top** of the print canvas (x=0 and x=600), with no additional padding inserted
   above.
 - Remaining space below the strips: `1800 − 1596 = 204` pixels.
@@ -94,12 +96,15 @@ Derived height check:
     - **Text content box:** `576 × 192` pixels
     - Width 576 aligns with strip tile content (not the outer 12px borders).
     - Height 192 accounts for a single 12px bottom margin, without adding a new top margin.
+- Left origin: `(12, 1596)`
+- Right origin: `(612, 1596)`
 
 ### Print-only Text Content
 
-- Print-only text includes:
-    - `Find your photos at saperstonestudios.com#album`
-    - A session-specific album code (≈ 20 characters)
+- Print-only text includes 3 lines:
+    - `Find your photos online`
+    - `saperstonestudios.com#album`
+    - A custom album code (≈ 20 characters)
 - The URL is expected to present a modal prompting for the code, then route to the session photos.
 
 ### Allowed Print Layout Adjustments (Explicit)

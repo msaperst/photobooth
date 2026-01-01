@@ -17,9 +17,9 @@ Live preview images are never stored on disk.
     └── YYYY-MM-DD/
         └── session_<uuid>/
             ├── photos/
-            │   ├── photo_1.jpg
-            │   ├── photo_2.jpg
-            │   └── photo_3.jpg
+            │   ├── photo_<ts>_<n>.jpg
+            │   ├── photo_<ts>_<n>.nef
+            │   └── ... 
             ├── strip.jpg
             └── print.jpg
 ```
@@ -30,6 +30,7 @@ Live preview images are never stored on disk.
 - All photos captured during that session are written to the `photos/` subdirectory.
 - The combined photo strip is saved as `strip.jpg` in the session root.
 - The print composite (when implemented) will be saved alongside the strip (e.g., `print.jpg`).
+- Both RAW and full resolution JPG images are preserved for future editing
 
 > **Note:** Directory listings at `/sessions/` may or may not be enabled depending on environment and Flask
 > configuration. Individual files are always accessible if the path is known.

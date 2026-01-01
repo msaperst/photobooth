@@ -139,7 +139,7 @@ CI performs the following steps:
         - Any test fails
         - Coverage drops below the enforced threshold
 3. For JavaScript
-    1. Sets up Node (currently Python 22)
+    1. Sets up Node (currently Node 22)
     2. Installs dependencies from package-lock.json
     3. Runs all unit tests
     4. Fails if:

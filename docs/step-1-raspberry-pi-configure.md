@@ -75,7 +75,9 @@ Before plugging USB in, set these on the camera itself:
 On the camera body:
 
 - Mode dial: M (Manual)
-- Image quality: JPEG (not RAW)
+- Image quality: RAW+JPEG (preferred) or JPEG-only
+
+  *note: “RAW-only will break strip creation unless you add RAW conversion.”*
 - Wi-Fi: OFF
 - Auto power off: Long / Disabled
 - USB mode: (Nikon auto-detects, no menu option needed)
@@ -182,8 +184,10 @@ Run:
 
 ```bash
 gphoto2 --capture-image-and-download \
-  --filename test_%Y%m%d_%H%M%S.jpg
+  --filename test_%Y%m%d_%H%M%S_%n.%C
 ```
+
+note: “Expect `.jpg` and `.nef` if RAW+JPEG enabled.”
 
 Expected behavior:
 

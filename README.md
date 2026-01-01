@@ -204,7 +204,9 @@ Live view may be reintroduced **only if a future camera supports it cleanly and 
 * Faster print times
 * Better driver support
 
-Printing is handled synchronously and sequentially to avoid printer overload.
+Printing is handled synchronously and sequentially to avoid
+printer overload. Session processing produces `strip.jpg`
+and `print.jpg` (print-ready 1200×1800 @300 DPI).
 
 Strip/print sizing and responsibilities are defined in `docs/strip-vs-print-contract.md`.
 
