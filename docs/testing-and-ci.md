@@ -68,7 +68,7 @@ Before opening a pull request, tests **must** be run locally.
 From the project root:
 
 ```bash
-pytest --cov=controller --cov=web --cov-report=term-missing
+pytest --cov=controller --cov=web --cov=imaging --cov-report=term-missing
 ```
 
 This will:
@@ -80,7 +80,7 @@ This will:
 To enforce the same coverage threshold as CI:
 
 ```bash
-pytest --cov=controller --cov=web --cov-fail-under=80
+pytest --cov=controller --cov=web --cov=imaging --cov-fail-under=80
 ```
 
 If this command fails locally, CI will fail as well.

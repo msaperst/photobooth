@@ -108,3 +108,76 @@ def test_render_strip_preserves_aspect_ratio_letterboxes(tmp_path):
     # Center should be the image color (not background).
     center = strip.getpixel((tile_x0 + 288, tile_y0 + 192))
     assert center != bg
+
+
+def test_fit_preserve_aspect_invalid_dimensions():
+    from imaging.strip_renderer import _fit_preserve_aspect
+
+    class FakeImage:
+        size = (0, 10)
+
+    with pytest.raises(StripCreationError, match="Invalid image dimensions"):
+        _fit_preserve_aspect(FakeImage(), (100, 100), (255, 255, 255))
+
+
+def test_render_strip_logo_size_none(tmp_path):
+    imgs = []
+    for i in range(3):
+        p = tmp_path / f"{i}.jpg"
+        Image.new("RGB", (10, 10)).save(p)
+        imgs.append(p)
+
+    logo = tmp_path / "logo.png"
+    Image.new("RGB", (10, 10)).save(logo)
+
+    layout = StripLayout(
+        photo_size=(576, 384),
+        padding=12,
+        background_color=(255, 255, 255),
+        logo_path=logo,
+        logo_size=None,
+    )
+
+    with pytest.raises(StripCreationError, match="Logo size is required"):
+        render_strip(imgs, layout)
+
+
+def test_render_strip_logo_missing(tmp_path):
+    imgs = []
+    for i in range(3):
+        p = tmp_path / f"{i}.jpg"
+        Image.new("RGB", (10, 10)).save(p)
+        imgs.append(p)
+
+    layout = StripLayout(
+        photo_size=(576, 384),
+        padding=12,
+        background_color=(255, 255, 255),
+        logo_path=tmp_path / "missing.png",
+        logo_size=(576, 384),
+    )
+
+    with pytest.raises(StripCreationError, match="logo file does not exist"):
+        render_strip(imgs, layout)
+
+
+def test_render_strip_logo_corrupt(tmp_path):
+    imgs = []
+    for i in range(3):
+        p = tmp_path / f"{i}.jpg"
+        Image.new("RGB", (10, 10)).save(p)
+        imgs.append(p)
+
+    logo = tmp_path / "logo.png"
+    logo.write_text("not an image")
+
+    layout = StripLayout(
+        photo_size=(576, 384),
+        padding=12,
+        background_color=(255, 255, 255),
+        logo_path=logo,
+        logo_size=(576, 384),
+    )
+
+    with pytest.raises(StripCreationError, match="Failed to load logo image"):
+        render_strip(imgs, layout)
