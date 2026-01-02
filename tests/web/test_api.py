@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 from flask import json
 
@@ -8,9 +10,43 @@ from web.app import create_app
 @pytest.fixture
 def client(tmp_path):
     camera = FakeCamera(tmp_path)
-    app = create_app(camera=camera, image_root=tmp_path)
+    logo_path = tmp_path / "logo.png"
+    # Minimal valid PNG header so PIL can open if needed later
+    logo_path.write_bytes(b"\x89PNG\r\n\x1a\n")
+    app = create_app(camera=camera, image_root=tmp_path, album_code="TESTALBUM", logo_path=logo_path)
     app.config["TESTING"] = True
     return app.test_client()
+
+
+def test_create_app_requires_env_when_no_overrides(monkeypatch):
+    monkeypatch.delenv("PHOTOBOOTH_IMAGE_ROOT", raising=False)
+    monkeypatch.delenv("PHOTOBOOTH_ALBUM_CODE", raising=False)
+    monkeypatch.delenv("PHOTOBOOTH_LOGO_PATH", raising=False)
+    app = create_app(camera=FakeCamera(Path("/tmp")))
+    app.config["TESTING"] = True
+    client = app.test_client()
+    resp = client.get("/healthz")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["level"] == "ERROR"
+    assert data["code"] == "CONFIG_INVALID"
+    assert "PHOTOBOOTH_IMAGE_ROOT" in "\n".join(data.get("instructions") or [])
+
+
+def test_operations_are_blocked_when_unhealthy(monkeypatch, tmp_path):
+    monkeypatch.delenv("PHOTOBOOTH_IMAGE_ROOT", raising=False)
+    monkeypatch.delenv("PHOTOBOOTH_ALBUM_CODE", raising=False)
+    monkeypatch.delenv("PHOTOBOOTH_LOGO_PATH", raising=False)
+    app = create_app(camera=FakeCamera(tmp_path))
+    app.config["TESTING"] = True
+    client = app.test_client()
+
+    r = client.post("/start-session", data=json.dumps({"print_count": 1}), content_type="application/json")
+    assert r.status_code == 503
+    payload = r.get_json()
+    assert payload["ok"] is False
+    assert payload["error"] == "unhealthy"
+    assert payload["health"]["code"] == "CONFIG_INVALID"
 
 
 def test_status_endpoint(client):
@@ -81,6 +117,12 @@ def test_health_endpoint_ok(client):
     assert resp.json == {"level": "OK"}
 
 
+def test_healthz_endpoint_ok(client):
+    resp = client.get("/healthz")
+    assert resp.status_code == 200
+    assert resp.json == {"level": "OK"}
+
+
 def test_sessions_route_serves_file(tmp_path, monkeypatch):
     """
     Verify that /sessions/<path> serves files from the sessions directory.
@@ -94,7 +136,9 @@ def test_sessions_route_serves_file(tmp_path, monkeypatch):
     test_file.write_text("hello photobooth")
 
     # Patch the SESSIONS_ROOT used by the app
-    app = create_app(camera=None)
+    logo_path = tmp_path / "logo.png"
+    logo_path.write_bytes(b"\x89PNG\r\n\x1a\n")
+    app = create_app(camera=None, image_root=tmp_path, album_code="TESTALBUM", logo_path=logo_path)
     app.config["SESSIONS_ROOT"] = sessions_root
     client = app.test_client()
 
@@ -104,3 +148,73 @@ def test_sessions_route_serves_file(tmp_path, monkeypatch):
     # Assert
     assert response.status_code == 200
     assert response.data == b"hello photobooth"
+
+
+def test_create_app_uses_env_vars_when_overrides_are_none(monkeypatch, tmp_path):
+    """Cover the env-var else branches in create_app for root/album/logo."""
+    # Arrange env vars + a real logo file.
+    env_root = tmp_path / "data"
+    env_root.mkdir()
+    logo_file = tmp_path / "event_logo.png"
+    logo_file.write_bytes(b"\x89PNG\r\n\x1a\n")
+
+    monkeypatch.setenv("PHOTOBOOTH_IMAGE_ROOT", str(env_root))
+    monkeypatch.setenv("PHOTOBOOTH_ALBUM_CODE", "ALBUM123")
+    monkeypatch.setenv("PHOTOBOOTH_LOGO_PATH", str(logo_file))
+
+    camera = FakeCamera(tmp_path)
+
+    # Act: do not pass explicit overrides so create_app consumes env.
+    app = create_app(camera=camera)
+    app.config["TESTING"] = True
+    client = app.test_client()
+
+    # Assert: service starts healthy and uses env values.
+    resp = client.get("/healthz")
+    assert resp.status_code == 200
+    assert resp.get_json() == {"level": "OK"}
+
+    assert app.controller.image_root == env_root
+    assert app.controller.event_album_code == "ALBUM123"
+    assert app.controller.strip_logo_path == logo_file
+
+
+def test_create_app_reports_invalid_logo_path(monkeypatch, tmp_path):
+    """Cover the logo_path exists/is_file validation branch."""
+    env_root = tmp_path / "data"
+    env_root.mkdir()
+    bad_logo = tmp_path / "does_not_exist.png"
+
+    monkeypatch.setenv("PHOTOBOOTH_IMAGE_ROOT", str(env_root))
+    monkeypatch.setenv("PHOTOBOOTH_ALBUM_CODE", "ALBUM123")
+    monkeypatch.setenv("PHOTOBOOTH_LOGO_PATH", str(bad_logo))
+
+    app = create_app(camera=FakeCamera(tmp_path))
+    app.config["TESTING"] = True
+    client = app.test_client()
+
+    resp = client.get("/healthz")
+    data = resp.get_json()
+    assert data["level"] == "ERROR"
+    assert data["code"] == "CONFIG_INVALID"
+    instructions = "\n".join(data.get("instructions") or [])
+    assert "PHOTOBOOTH_LOGO_PATH is invalid" in instructions
+    assert str(bad_logo) in instructions
+
+
+def test_take_photo_blocked_when_unhealthy(monkeypatch, tmp_path):
+    """When controller health is not OK, /take-photo should return 503 with health payload."""
+    monkeypatch.delenv("PHOTOBOOTH_IMAGE_ROOT", raising=False)
+    monkeypatch.delenv("PHOTOBOOTH_ALBUM_CODE", raising=False)
+    monkeypatch.delenv("PHOTOBOOTH_LOGO_PATH", raising=False)
+
+    app = create_app(camera=FakeCamera(tmp_path))
+    app.config["TESTING"] = True
+    client = app.test_client()
+
+    r = client.post("/take-photo")
+    assert r.status_code == 503
+    payload = r.get_json()
+    assert payload["ok"] is False
+    assert payload["error"] == "unhealthy"
+    assert payload["health"]["code"] == "CONFIG_INVALID"

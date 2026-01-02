@@ -2,6 +2,33 @@
 
 ---
 
+## 1.0 Create a dedicated photobooth user
+
+Run the service as a dedicated non-root user.
+
+```bash
+sudo adduser photobooth
+```
+
+Add the photobooth user to the groups needed for USB camera access (and later, printing):
+
+```bash
+sudo usermod -aG plugdev,video,dialout photobooth
+```
+
+Reboot to ensure group membership and udev rules apply cleanly:
+
+```bash
+sudo reboot
+```
+
+After reboot, confirm:
+
+```bash
+groups photobooth
+```
+
+---
 ## 1.1 Update Raspberry Pi and install dependencies
 
 Install the basic dependencies

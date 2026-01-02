@@ -320,7 +320,9 @@ See: [testing-and-ci.md](docs/testing-and-ci.md)
 ### Setup
 
 Step 0: [step-0-raspberry-pi-setup.md](docs/step-0-raspberry-pi-setup.md)
+
 Step 1: [step-1-raspberry-pi-configure.md](docs/step-1-raspberry-pi-configure.md)
+
 Step 2: [step-2-deploy-and-run-on-raspberry-pi.md](docs/step-2-deploy-and-run-on-raspberry-pi.md)
 
 ### Recovery and Errors

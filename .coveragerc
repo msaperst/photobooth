@@ -1,3 +1,4 @@
 [run]
 omit =
     controller/camera_base.py
+    web/wsgi.py
