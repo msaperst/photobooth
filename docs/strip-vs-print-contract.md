@@ -114,7 +114,8 @@ The print-only retrieval area under each strip contains a **QR code + two text l
 ### Allowed Print Layout Adjustments (Explicit)
 
 - Background color for print padding/text area is permitted (typically white).
-- Text layout may use one or two lines; URL and code may be styled differently for readability.
+- Text layout may use one or two lines; QR and text may be styled differently for readability, but content must stay
+  within its per-strip box (no seam crossing).
 - If printer/driver requires, the entire print image may be rotated before sending to CUPS, but the pixel canvas
   and DPI metadata must remain correct.
 
