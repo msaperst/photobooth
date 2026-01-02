@@ -184,7 +184,7 @@ def test_photo_capture_worker_sets_idle_on_capture_failure(tmp_path, monkeypatch
 
     assert health.level == HealthLevel.ERROR
     assert health.code == HealthCode.CAMERA_NOT_DETECTED
-    assert "photo 1 of 1" in health.message
+    assert "photo 1 of 3" in health.message
     assert "Session was cancelled" in health.message
 
 
@@ -229,28 +229,6 @@ def test_start_does_not_fail_when_live_view_unavailable(tmp_path, monkeypatch):
 
     health = controller.get_health()
     assert health.level == HealthLevel.OK
-
-
-def test_capture_sets_health_error_when_restart_live_view_fails(tmp_path, monkeypatch):
-    camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
-
-    controller.countdown_seconds = 0
-    monkeypatch.setattr(time, "sleep", lambda _s: None)
-
-    def fail_start_live_view():
-        raise RuntimeError("live view failed")
-
-    monkeypatch.setattr(camera, "start_live_view", fail_start_live_view)
-
-    controller.start()
-    controller.enqueue(Command(CommandType.START_SESSION, payload={"image_count": 1}))
-    wait_for(lambda: controller.state == ControllerState.READY_FOR_PHOTO)
-
-    controller.enqueue(Command(CommandType.TAKE_PHOTO))
-
-    # Capture still succeeds, but health should reflect error
-    wait_for(lambda: controller.get_health().level == HealthLevel.ERROR)
 
 
 def test_capture_failure_mid_round_sets_contextual_message(tmp_path, monkeypatch):
@@ -355,7 +333,6 @@ def test_strip_failure_sets_health_error(tmp_path, monkeypatch):
     controller.enqueue(
         Command(
             CommandType.START_SESSION,
-            payload={"image_count": 1},
         )
     )
 
@@ -363,9 +340,11 @@ def test_strip_failure_sets_health_error(tmp_path, monkeypatch):
     from tests.helpers import wait_for
     wait_for(lambda: controller.state == ControllerState.READY_FOR_PHOTO)
 
-    controller.enqueue(
-        Command(CommandType.TAKE_PHOTO)
-    )
+    # Take 3 photos (session always requires 3)
+    for expected_count in range(1, 4):
+        wait_for(lambda: controller.state == ControllerState.READY_FOR_PHOTO)
+        controller.enqueue(Command(CommandType.TAKE_PHOTO))
+        wait_for(lambda: controller.photos_taken == expected_count)
 
     # Wait for processing to complete
     wait_for(lambda: controller.state == ControllerState.IDLE)

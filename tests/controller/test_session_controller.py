@@ -56,15 +56,15 @@ def test_finish_session_saves_strip(tmp_path, monkeypatch):
     controller.enqueue(
         Command(
             CommandType.START_SESSION,
-            payload={"image_count": 1},
         )
     )
 
     wait_for(lambda: controller.state == ControllerState.READY_FOR_PHOTO)
 
-    controller.enqueue(
-        Command(CommandType.TAKE_PHOTO)
-    )
+    for expected_count in range(1, 4):
+        wait_for(lambda: controller.state == ControllerState.READY_FOR_PHOTO)
+        controller.enqueue(Command(CommandType.TAKE_PHOTO))
+        wait_for(lambda: controller.photos_taken == expected_count)
 
     wait_for(lambda: controller.state == ControllerState.IDLE)
 
@@ -111,12 +111,14 @@ def test_finish_session_recovers_from_unexpected_processing_exception(tmp_path, 
 
     # Start a 1-photo session
     controller.enqueue(
-        Command(CommandType.START_SESSION, payload={"image_count": 1})
+        Command(CommandType.START_SESSION)
     )
     wait_for(lambda: controller.state == ControllerState.READY_FOR_PHOTO)
 
-    # Take the single photo (triggers finish worker)
-    controller.enqueue(Command(CommandType.TAKE_PHOTO))
+    for expected_count in range(1, 4):
+        wait_for(lambda: controller.state == ControllerState.READY_FOR_PHOTO)
+        controller.enqueue(Command(CommandType.TAKE_PHOTO))
+        wait_for(lambda: controller.photos_taken == expected_count)
 
     # Controller must recover to IDLE (not stranded in PROCESSING)
     wait_for(lambda: controller.state == ControllerState.IDLE)
@@ -211,3 +213,17 @@ def test_start_session_print_count_below_one_is_clamped_to_one(tmp_path, monkeyp
 
     assert controller.print_count == 1
     assert controller.get_status()["print_count"] == 1
+
+
+def test_start_session_ignores_image_count_payload(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera, tmp_path)
+    controller.start()
+
+    controller.enqueue(
+        Command(CommandType.START_SESSION, payload={"image_count": 99, "print_count": 1})
+    )
+
+    wait_for(lambda: controller.session_active is True)
+    assert controller.total_photos == controller.TOTAL_PHOTOS_PER_SESSION
+    assert controller.total_photos == 3

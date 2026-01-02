@@ -62,11 +62,14 @@ class PhotoboothController:
     # How often to attempt recovery when unhealthy (camera off/unplugged)
     RECOVERY_ATTEMPT_INTERVAL = 2.0  # seconds
 
+    # How many photos are taken to build out the strip.
+    TOTAL_PHOTOS_PER_SESSION = 3
+
     def __init__(self, camera: Camera, image_root: Path):
         self._state_lock = threading.Lock()
 
         # Session state
-        self.total_photos = 3
+        self.total_photos = self.TOTAL_PHOTOS_PER_SESSION
         self.photos_taken = 0
         self.print_count = 1
         self.session_active = False

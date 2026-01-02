@@ -34,7 +34,7 @@ class SessionFlow:
         with self._controller._state_lock:
             self._controller.session_active = True
             self._controller.photos_taken = 0
-            self._controller.total_photos = payload.get("image_count", 3)
+            self._controller.total_photos = self._controller.TOTAL_PHOTOS_PER_SESSION
             raw_print_count = payload.get("print_count", 1)
             try:
                 print_count = int(raw_print_count)
@@ -161,15 +161,12 @@ class SessionFlow:
             )
             sheet.save(storage.print_path, dpi=(300, 300))
 
-
-
         except StripCreationError as e:
             self._controller._set_processing_error(str(e))
             with self._controller._state_lock:
                 self._controller.session_active = False
                 self._controller.state = ControllerState.IDLE
             return
-
 
         except Exception as e:
             self._controller._set_processing_error(

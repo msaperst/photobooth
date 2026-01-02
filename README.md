@@ -68,7 +68,6 @@ conditions**.
 2. Guest selects the number of strips to print (2/4/6/8) and taps **Start**.
 
 3. UI sends `POST /start-session` with:
-    - `image_count` (currently always 3)
     - `print_count` (number of print sheets; 2 strips per sheet)
 
 4. The controller transitions to an active session and becomes ready for the first photo.
@@ -85,6 +84,10 @@ conditions**.
 7. Printing (CUPS) is started asynchronously so the UI is not blocked.
    The system returns to IDLE so the next guests can begin while the printer finishes.
    Any printer errors are surfaced through `/health`.
+
+> **_NOTE:_** Three photos are always taken for the strip. The first
+> time the take photo button is clicked, the `/start-session` endpoint is
+> called, followed immediately by the `/take-photo` endpoint
 
 ---
 
