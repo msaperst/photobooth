@@ -626,3 +626,218 @@ def test_set_printer_error_sets_printer_failed_and_message(tmp_path):
     assert health.level == HealthLevel.ERROR
     assert health.code == HealthCode.PRINTER_FAILED
     assert "printer offline" in (health.message or "")
+
+
+def test_busy_flag_true_when_printer_error_active(tmp_path):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
+
+    # Simulate a printer-owned sticky error
+    controller._set_printer_error("printer offline")
+
+    status = controller.get_status()
+    assert status["busy"] is True
+
+    health = controller.get_health()
+    assert health.level == HealthLevel.ERROR
+    assert health.code == HealthCode.PRINTER_FAILED
+
+
+def test_poll_printer_health_noop_when_not_idle(tmp_path):
+    camera = FakeCamera(tmp_path)
+
+    class PrinterThatWouldRecover:
+        def preflight(self) -> None:
+            return
+
+        def print_file(self, file_path, *, copies=1, job_name=None) -> None:
+            raise AssertionError("should not print while not idle")
+
+    controller = PhotoboothController(camera=camera, printer=PrinterThatWouldRecover(), image_root=tmp_path)
+
+    controller.state = ControllerState.READY_FOR_PHOTO
+    controller._set_printer_error("printer offline")
+
+    # Seed pending job
+    controller._pending_print_path = tmp_path / "print.jpg"
+    controller._pending_print_copies = 1
+
+    controller._poll_printer_health_if_idle()  # should do nothing
+    assert controller.get_health().level == HealthLevel.ERROR
+
+
+def test_start_print_job_returns_early_when_copies_less_than_one(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+
+    class SpyPrinter(NoOpPrinter):
+        def __init__(self):
+            self.preflight_called = False
+            self.print_called = False
+
+        def preflight(self) -> None:
+            self.preflight_called = True
+
+        def print_file(self, file_path: Path, *, copies: int = 1, job_name: str | None = None) -> None:
+            self.print_called = True
+
+    printer = SpyPrinter()
+    controller = PhotoboothController(camera=camera, printer=printer, image_root=tmp_path)
+
+    # If a worker thread were created, we'd see this called
+    started = {"called": False}
+    monkeypatch.setattr(threading, "Thread",
+                        lambda *a, **k: type("T", (), {"start": lambda _s: started.__setitem__("called", True)})())
+
+    controller._start_print_job(tmp_path / "print.jpg", copies=0)
+
+    assert printer.preflight_called is False
+    assert printer.print_called is False
+    assert started["called"] is False
+
+
+def test_start_print_job_worker_exits_when_print_in_flight(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+
+    class SpyPrinter(NoOpPrinter):
+        def __init__(self):
+            self.preflight_called = False
+            self.print_called = False
+
+        def preflight(self) -> None:
+            self.preflight_called = True
+
+        def print_file(self, file_path: Path, *, copies: int = 1, job_name: str | None = None) -> None:
+            self.print_called = True
+
+    printer = SpyPrinter()
+    controller = PhotoboothController(camera=camera, printer=printer, image_root=tmp_path)
+
+    # Force the "in flight" guard to trigger
+    controller._print_in_flight = True
+
+    class ImmediateThread:
+        def __init__(self, *, target, daemon, name):
+            self._target = target
+
+        def start(self):
+            self._target()
+
+    monkeypatch.setattr(threading, "Thread", lambda *a, **k: ImmediateThread(**k))
+
+    controller._start_print_job(tmp_path / "print.jpg", copies=1)
+
+    # Preflight still happens before worker creation
+    assert printer.preflight_called is True
+    # But printing must NOT occur because worker returns immediately
+    assert printer.print_called is False
+
+
+def test_poll_printer_health_returns_when_print_in_flight(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+
+    class SpyPrinter(NoOpPrinter):
+        def __init__(self):
+            self.preflight_called = False
+
+        def preflight(self) -> None:
+            self.preflight_called = True
+
+    printer = SpyPrinter()
+    controller = PhotoboothController(camera=camera, printer=printer, image_root=tmp_path)
+
+    controller.state = ControllerState.IDLE
+    controller._set_printer_error("printer offline")
+
+    controller._pending_print_path = tmp_path / "print.jpg"
+    controller._pending_print_copies = 1
+
+    # Simulate an active print job
+    controller._print_in_flight = True
+
+    controller._poll_printer_health_if_idle()
+
+    assert printer.preflight_called is False
+
+
+def test_poll_printer_health_returns_when_no_pending_job(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+
+    class SpyPrinter(NoOpPrinter):
+        def __init__(self):
+            self.preflight_called = False
+
+        def preflight(self) -> None:
+            self.preflight_called = True
+
+    printer = SpyPrinter()
+    controller = PhotoboothController(camera=camera, printer=printer, image_root=tmp_path)
+
+    controller.state = ControllerState.IDLE
+    controller._set_printer_error("printer offline")
+
+    # Case A: pending_path is None
+    controller._pending_print_path = None
+    controller._pending_print_copies = 1
+    controller._poll_printer_health_if_idle()
+    assert printer.preflight_called is False
+
+    # Case B: pending_copies < 1
+    controller._pending_print_path = tmp_path / "print.jpg"
+    controller._pending_print_copies = 0
+    controller._poll_printer_health_if_idle()
+    assert printer.preflight_called is False
+
+
+def test_poll_printer_health_throttles_recovery_attempts(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+
+    class SpyPrinter(NoOpPrinter):
+        def __init__(self):
+            self.preflight_called = False
+
+        def preflight(self) -> None:
+            self.preflight_called = True
+
+    printer = SpyPrinter()
+    controller = PhotoboothController(camera=camera, printer=printer, image_root=tmp_path)
+
+    controller.state = ControllerState.IDLE
+    controller._set_printer_error("printer offline")
+
+    controller._pending_print_path = tmp_path / "print.jpg"
+    controller._pending_print_copies = 1
+
+    monkeypatch.setattr(time, "time", lambda: 1000.0)
+    controller._last_printer_recovery_attempt = 999.5  # 0.5s ago < 2.0s interval
+
+    controller._poll_printer_health_if_idle()
+
+    assert printer.preflight_called is False
+
+
+def test_poll_printer_health_returns_cleanly_when_preflight_raises(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+
+    class ExplodingPreflightPrinter(NoOpPrinter):
+        def preflight(self) -> None:
+            raise RuntimeError("still broken")
+
+    printer = ExplodingPreflightPrinter()
+    controller = PhotoboothController(camera=camera, printer=printer, image_root=tmp_path)
+
+    controller.state = ControllerState.IDLE
+    controller._set_printer_error("printer offline")
+
+    controller._pending_print_path = tmp_path / "print.jpg"
+    controller._pending_print_copies = 1
+
+    # Ensure throttle won't prevent the call
+    monkeypatch.setattr(time, "time", lambda: 1000.0)
+    controller._last_printer_recovery_attempt = 0.0
+
+    controller._poll_printer_health_if_idle()
+
+    # Health should remain ERROR (not cleared)
+    health = controller.get_health()
+    assert health.level == HealthLevel.ERROR
+    assert health.code == HealthCode.PRINTER_FAILED

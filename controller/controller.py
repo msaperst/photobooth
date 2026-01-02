@@ -23,6 +23,7 @@ Configuration (event-level):
 """
 
 import threading
+import time
 from enum import Enum, auto
 from pathlib import Path
 from queue import Queue, Empty
@@ -60,7 +61,7 @@ class PhotoboothController:
     # How long live view must be failing (while idle/ready) before surfacing an error
     LIVE_VIEW_ERROR_AFTER = 2.5  # seconds
 
-    # How often to attempt recovery when unhealthy (camera off/unplugged)
+    # How often to attempt recovery when unhealthy (camera/printer off/unplugged)
     RECOVERY_ATTEMPT_INTERVAL = 2.0  # seconds
 
     # How many photos are taken to build out the strip.
@@ -78,9 +79,8 @@ class PhotoboothController:
         self.countdown_seconds = 3
         self.countdown_remaining = 0
 
-        # Printer/Camera + storage
+        # Camera + storage
         self.camera = camera
-        self.printer = printer
         self.image_root = image_root
         self.sessions_root = image_root / "sessions"
         self.sessions_root.mkdir(parents=True, exist_ok=True)
@@ -90,6 +90,14 @@ class PhotoboothController:
         # so it's easy to relocate/rename without chasing references.
         self.strip_logo_path = Path(__file__).resolve().parents[1] / "imaging" / "logo.png"
         self.event_album_code = "MaxMitzvah2026"
+
+        # Printer
+        self.printer = printer
+        self._pending_print_path: Optional[Path] = None
+        self._pending_print_copies: int = 0
+        self._last_printer_recovery_attempt = 0.0
+        self._print_lock = threading.Lock()
+        self._print_in_flight = False
 
         # Controller loop
         self.state = ControllerState.IDLE
@@ -135,14 +143,23 @@ class PhotoboothController:
 
     def get_status(self):
         with self._state_lock:
-            return {
-                "state": self.state.name,
-                "busy": self.state != ControllerState.IDLE,
-                "photos_taken": self.photos_taken,
-                "total_photos": self.total_photos,
-                "print_count": self.print_count,
-                "countdown_remaining": self.countdown_remaining,
-            }
+            state = self.state
+            photos_taken = self.photos_taken
+            total_photos = self.total_photos
+            print_count = self.print_count
+            countdown_remaining = self.countdown_remaining
+
+        with self._health_lock:
+            printer_blocked = self._health_source == HealthSource.PRINTER
+
+        return {
+            "state": state.name,
+            "busy": state != ControllerState.IDLE or printer_blocked,
+            "photos_taken": photos_taken,
+            "total_photos": total_photos,
+            "print_count": print_count,
+            "countdown_remaining": countdown_remaining,
+        }
 
     def get_health(self) -> HealthStatus:
         with self._health_lock:
@@ -157,6 +174,7 @@ class PhotoboothController:
                 self._handle_command(command)
             except Empty:
                 self._poll_camera_health_if_idle()
+                self._poll_printer_health_if_idle()
                 continue
             except Exception as e:
                 # Keep controller loop alive. Tests + logs catch regressions.
@@ -206,6 +224,42 @@ class PhotoboothController:
         with self._health_lock:
             return self._health_status.level == HealthLevel.ERROR
 
+    # will print stuff
+    def _start_print_job(self, print_path: Path, *, copies: int) -> None:
+        if copies < 1:
+            return
+
+        # Record what we intend to print so we can retry after recovery
+        with self._print_lock:
+            self._pending_print_path = print_path
+            self._pending_print_copies = copies
+
+        try:
+            self.printer.preflight()
+        except Exception as e:
+            self._set_printer_error(str(e))
+            return
+
+        def _print_worker():
+            with self._print_lock:
+                if self._print_in_flight:
+                    return
+                self._print_in_flight = True
+
+            try:
+                self.printer.print_file(print_path, copies=copies, job_name="Photobooth Print")
+                # Success: clear pending
+                with self._print_lock:
+                    self._pending_print_path = None
+                    self._pending_print_copies = 0
+            except Exception as e:
+                self._set_printer_error(str(e))
+            finally:
+                with self._print_lock:
+                    self._print_in_flight = False
+
+        threading.Thread(target=_print_worker, daemon=True, name="print-worker").start()
+
     # ---------- Health helpers ----------
 
     def _poll_camera_health_if_idle(self) -> None:
@@ -227,6 +281,43 @@ class PhotoboothController:
                 CAMERA_NOT_DETECTED,
                 source=HealthSource.CAPTURE,
             )
+
+    def _poll_printer_health_if_idle(self) -> None:
+        # Only recover while idle
+        if self.state != ControllerState.IDLE:
+            return
+
+        with self._health_lock:
+            if self._health_source != HealthSource.PRINTER:
+                return
+
+        with self._print_lock:
+            if self._print_in_flight:
+                return
+            pending_path = self._pending_print_path
+            pending_copies = self._pending_print_copies
+
+        if pending_path is None or pending_copies < 1:
+            return
+
+        now = time.time()
+        if now - self._last_printer_recovery_attempt < self.RECOVERY_ATTEMPT_INTERVAL:
+            return
+        self._last_printer_recovery_attempt = now
+
+        try:
+            self.printer.preflight()
+        except Exception:
+            return
+
+        # Clear PRINTER error (owned by PRINTER)
+        with self._health_lock:
+            if self._health_source == HealthSource.PRINTER:
+                self._health_source = None
+                self._health_status = HealthStatus.ok()
+
+        # Retry print job
+        self._start_print_job(pending_path, copies=pending_copies)
 
     def _get_health_source(self) -> Optional[HealthSource]:
         with self._health_lock:

@@ -93,3 +93,18 @@ def test_cups_printer_raises_if_path_is_not_a_file(monkeypatch, tmp_path):
     printer = CupsPrinter(printer_name="SELPHY")
     with pytest.raises(PrinterError, match=r"Print path is not a file"):
         printer.print_file(d)
+
+
+def test_cups_printer_preflight_raises_if_lp_missing(monkeypatch):
+    monkeypatch.setattr("shutil.which", lambda _p: None)
+
+    printer = CupsPrinter(printer_name="DUMMY")
+    with pytest.raises(PrinterError, match="not found in PATH"):
+        printer.preflight()
+
+
+def test_cups_printer_preflight_ok_when_lp_present(monkeypatch):
+    monkeypatch.setattr("shutil.which", lambda _p: "/usr/bin/lp")
+
+    printer = CupsPrinter(printer_name="DUMMY")
+    printer.preflight()  # should not raise

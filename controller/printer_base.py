@@ -27,3 +27,6 @@ class Printer(ABC):
         - Implementations should raise PrinterError on failure.
         """
         raise NotImplementedError
+
+    def preflight(self) -> None:
+        """Raise PrinterError if printing is obviously impossible (e.g., CUPS not available)."""

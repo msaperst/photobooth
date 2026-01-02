@@ -177,10 +177,16 @@ class SessionFlow:
                 self._controller.state = ControllerState.IDLE
             return
 
+        # Start printing asynchronously (do not block UI).
         with self._controller._state_lock:
             self._controller.state = ControllerState.PRINTING
-        time.sleep(1)
 
+        self._controller._start_print_job(
+            storage.print_path,
+            copies=self._controller.print_count,
+        )
+
+        # Return to IDLE immediately so the next guests can start.
         with self._controller._state_lock:
             self._controller.session_active = False
             self._controller.state = ControllerState.IDLE

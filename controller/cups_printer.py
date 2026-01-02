@@ -34,6 +34,11 @@ class CupsPrinter(Printer):
         if shutil.which(self._lp_path) is None:
             raise PrinterError(f"CUPS not available: '{self._lp_path}' not found in PATH")
 
+    def preflight(self) -> None:
+        # Cheap fast check: confirm lp exists.
+        # We intentionally do NOT query printer state here (could block / be flaky).
+        self._validate()
+
     def print_file(self, file_path: Path, *, copies: int = 1, job_name: str | None = None) -> None:
         self._validate()
 
