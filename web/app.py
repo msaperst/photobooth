@@ -35,6 +35,12 @@ def create_app(camera=None, image_root: Path | None = None):
     def health():
         return jsonify(controller.get_health().to_dict())
 
+    # an alias of the above health - might be modified in the future
+    # to contain system information
+    @app.route("/healthz", methods=["GET"])
+    def healthz():
+        return jsonify(controller.get_health().to_dict())
+
     @app.route("/status", methods=["GET"])
     def status():
         return jsonify(app.controller.get_status())

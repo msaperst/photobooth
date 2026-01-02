@@ -81,6 +81,12 @@ def test_health_endpoint_ok(client):
     assert resp.json == {"level": "OK"}
 
 
+def test_healthz_endpoint_ok(client):
+    resp = client.get("/healthz")
+    assert resp.status_code == 200
+    assert resp.json == {"level": "OK"}
+
+
 def test_sessions_route_serves_file(tmp_path, monkeypatch):
     """
     Verify that /sessions/<path> serves files from the sessions directory.

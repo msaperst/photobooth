@@ -28,5 +28,22 @@ flask --app web.app run --host=0.0.0.0 --port=5000
 
 ## Notes
 
+Verify the server is running:
+
+- Health (controller health summary): GET /health or GET /healthz
+- Status (UI/session state): GET /status
+  Example:
+
+```bash
+curl http://localhost:5000/healthz
+
+curl http://localhost:5000/status
+```
+
+Still Need:
+
 - systemd service note
 - auto-start on boot
+  (We’ll expand this doc heavily once we implement systemd + `/etc/photobooth.env`.)
+
+---
