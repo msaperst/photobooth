@@ -11,6 +11,8 @@ from controller.cups_printer import CupsPrinter
 from controller.gphoto_camera import GPhotoCamera
 from controller.printer_base import Printer
 
+DEFAULT_CUPS_PRINTER = "SELPHY_CP1500"
+
 
 def create_app(camera: Camera | None = None, printer: Printer | None = None, image_root: Path | None = None):
     if image_root is None:
@@ -24,8 +26,7 @@ def create_app(camera: Camera | None = None, printer: Printer | None = None, ima
         camera = GPhotoCamera()
 
     if printer is None:
-        # Hardcoded MVP default. Update this to match the actual CUPS queue name on the Pi.
-        printer = CupsPrinter(printer_name="SELPHY_CP1500")
+        printer = CupsPrinter(printer_name=DEFAULT_CUPS_PRINTER)
 
     controller = PhotoboothController(
         camera=camera,
@@ -70,6 +71,31 @@ def create_app(camera: Camera | None = None, printer: Printer | None = None, ima
             Command(CommandType.TAKE_PHOTO)
         )
         return jsonify({"ok": True})
+
+    @app.route("/admin/print-test", methods=["POST"])
+    def admin_print_test():
+        # Block if the booth is busy (includes printer-error blocking if you wired busy that way)
+        if app.controller.get_status()["busy"]:
+            return jsonify({"ok": False, "error": "busy"}), 409
+
+        data = request.get_json(silent=True) or {}
+        rel_path = data.get("path")
+        if not rel_path:
+            return jsonify({"ok": False, "error": "path is required"}), 400
+
+        sessions_root = app.config["SESSIONS_ROOT"]
+        candidate = (sessions_root / rel_path).resolve()
+
+        # Safety: ensure the resolved path stays within sessions_root
+        if sessions_root.resolve() not in candidate.parents and candidate != sessions_root.resolve():
+            return jsonify({"ok": False, "error": "invalid path"}), 400
+
+        if not candidate.exists() or not candidate.is_file():
+            return jsonify({"ok": False, "error": "file not found"}), 404
+
+        # Fire-and-forget (controller handles preflight, async printing, and health errors)
+        app.controller._start_print_job(candidate, copies=1)
+        return jsonify({"ok": True, "path": str(candidate.relative_to(sessions_root))})
 
     @app.route("/sessions/<path:filename>")
     def sessions(filename: str):
