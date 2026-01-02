@@ -7,8 +7,8 @@ from pathlib import Path
 from flask import Flask, jsonify, request, render_template, send_from_directory
 
 from controller.controller import PhotoboothController, Command, CommandType
-from controller.health import HealthLevel
 from controller.gphoto_camera import GPhotoCamera
+from controller.health import HealthLevel
 
 
 def create_app(camera=None, image_root: Path | None = None, *, album_code: str | None = None,
@@ -81,7 +81,7 @@ def create_app(camera=None, image_root: Path | None = None, *, album_code: str |
                 "Problems detected:",
                 *[f"  - {p}" for p in config_problems],
                 "After fixing config, restart the service:",
-                "  sudo systemctl restart photobooth",
+                "<code>sudo systemctl restart photobooth</code>",
                 "Or power-cycle the Pi.",
             ],
         )

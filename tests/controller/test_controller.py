@@ -597,3 +597,27 @@ def test_take_photo_reenqueued_when_not_ready_and_not_busy(tmp_path, monkeypatch
     assert called["n"] == 0, "Should not start capture immediately"
     assert len(put_args) == 1, "Command should be re-enqueued"
     assert put_args[0] is cmd, "Same command object should be re-queued"
+
+
+def test_set_config_error_does_not_overwrite_existing_error(tmp_path):
+    """Cover the early-return branch in set_config_error when health is already ERROR."""
+    camera = FakeCamera(tmp_path)
+    camera.connected = False  # start() will mark capture error
+    controller = PhotoboothController(camera, tmp_path)
+    controller.start()
+
+    # Sanity: controller is unhealthy due to camera.
+    assert controller.get_health().level == HealthLevel.ERROR
+    assert controller.get_health().code == HealthCode.CAMERA_NOT_DETECTED
+    assert controller._get_health_source() == HealthSource.CAPTURE
+
+    # Act: attempt to set config error; should not overwrite first-cause error.
+    controller.set_config_error(
+        message="config broken",
+        instructions=["fix it"],
+    )
+
+    # Assert: still the original capture error.
+    assert controller.get_health().level == HealthLevel.ERROR
+    assert controller.get_health().code == HealthCode.CAMERA_NOT_DETECTED
+    assert controller._get_health_source() == HealthSource.CAPTURE
