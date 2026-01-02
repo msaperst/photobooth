@@ -1,6 +1,7 @@
 import pytest
 from flask import json
 
+from tests.controller.test_controller import NoOpPrinter
 from tests.fakes.fake_camera import FakeCamera
 from web.app import create_app
 
@@ -8,7 +9,7 @@ from web.app import create_app
 @pytest.fixture
 def client(tmp_path):
     camera = FakeCamera(tmp_path)
-    app = create_app(camera=camera, image_root=tmp_path)
+    app = create_app(camera=camera, printer=NoOpPrinter(), image_root=tmp_path)
     app.config["TESTING"] = True
     return app.test_client()
 

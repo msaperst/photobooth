@@ -1,6 +1,7 @@
 from datetime import date
 
 from controller.session_storage import SessionStorage
+from tests.controller.test_controller import NoOpPrinter
 
 
 def test_session_storage_creates_expected_paths(tmp_path):
@@ -26,7 +27,7 @@ from tests.helpers import wait_for
 
 def test_finish_session_saves_strip(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     controller.countdown_seconds = 0
     monkeypatch.setattr("time.sleep", lambda _: None)
@@ -76,7 +77,7 @@ def test_finish_session_saves_strip(tmp_path, monkeypatch):
 
 def test_finish_session_worker_clears_session_and_returns_idle(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     monkeypatch.setattr("time.sleep", lambda _: None)
 
@@ -91,7 +92,7 @@ def test_finish_session_worker_clears_session_and_returns_idle(tmp_path, monkeyp
 
 def test_finish_session_recovers_from_unexpected_processing_exception(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     controller.countdown_seconds = 0
     monkeypatch.setattr("time.sleep", lambda _: None)
@@ -134,7 +135,7 @@ def test_finish_session_recovers_from_unexpected_processing_exception(tmp_path, 
 
 def test_start_session_stores_print_count(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     controller.countdown_seconds = 0
     monkeypatch.setattr("time.sleep", lambda _: None)
@@ -154,7 +155,7 @@ def test_start_session_stores_print_count(tmp_path, monkeypatch):
 
 def test_start_session_clamps_print_count(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     controller.countdown_seconds = 0
     monkeypatch.setattr("time.sleep", lambda _: None)
@@ -176,7 +177,7 @@ def test_start_session_invalid_print_count_defaults_to_one(tmp_path, monkeypatch
     - print_count defaults to 1
     """
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     controller.countdown_seconds = 0
     monkeypatch.setattr("time.sleep", lambda _: None)
@@ -199,7 +200,7 @@ def test_start_session_print_count_below_one_is_clamped_to_one(tmp_path, monkeyp
     - print_count < 1 triggers clamp to 1
     """
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     controller.countdown_seconds = 0
     monkeypatch.setattr("time.sleep", lambda _: None)
@@ -217,7 +218,7 @@ def test_start_session_print_count_below_one_is_clamped_to_one(tmp_path, monkeyp
 
 def test_start_session_ignores_image_count_payload(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
     controller.start()
 
     controller.enqueue(

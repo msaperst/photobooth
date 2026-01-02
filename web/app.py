@@ -5,11 +5,14 @@ from pathlib import Path
 
 from flask import Flask, jsonify, request, render_template, send_from_directory
 
+from controller.camera_base import Camera
 from controller.controller import PhotoboothController, Command, CommandType
+from controller.cups_printer import CupsPrinter
 from controller.gphoto_camera import GPhotoCamera
+from controller.printer_base import Printer
 
 
-def create_app(camera=None, image_root: Path | None = None):
+def create_app(camera: Camera | None = None, printer: Printer | None = None, image_root: Path | None = None):
     if image_root is None:
         # Default: project root relative to this file
         image_root = Path(__file__).resolve().parents[1]
@@ -20,8 +23,13 @@ def create_app(camera=None, image_root: Path | None = None):
     if camera is None:
         camera = GPhotoCamera()
 
+    if printer is None:
+        # Hardcoded MVP default. Update this to match the actual CUPS queue name on the Pi.
+        printer = CupsPrinter(printer_name="SELPHY_CP1500")
+
     controller = PhotoboothController(
         camera=camera,
+        printer=printer,
         image_root=image_root,
     )
     controller.start()

@@ -1,5 +1,6 @@
 import threading
 import time
+from pathlib import Path
 
 from controller.controller import (
     PhotoboothController,
@@ -8,14 +9,20 @@ from controller.controller import (
     ControllerState,
 )
 from controller.health import HealthLevel, HealthCode, HealthSource
+from controller.printer_base import Printer
 from imaging.strip_errors import StripCreationError
 from tests.fakes.fake_camera import FakeCamera
 from tests.helpers import wait_for
 
 
+class NoOpPrinter(Printer):
+    def print_file(self, file_path: Path, *, copies: int = 1, job_name: str | None = None) -> None:
+        return
+
+
 def test_manual_photo_progression(tmp_path):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
     controller.countdown_seconds = 0
     controller.start()
 
@@ -56,7 +63,7 @@ def test_manual_photo_progression(tmp_path):
 
 def test_start_session_enters_ready_for_photo(tmp_path):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
     controller.start()
 
     controller.enqueue(Command(CommandType.START_SESSION))
@@ -66,7 +73,7 @@ def test_start_session_enters_ready_for_photo(tmp_path):
 
 def test_busy_flag_after_start_session(tmp_path):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
     controller.start()
 
     controller.enqueue(Command(CommandType.START_SESSION))
@@ -76,7 +83,7 @@ def test_busy_flag_after_start_session(tmp_path):
 
 def test_controller_stop_ignores_camera_errors(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
     controller.start()
 
     def boom():
@@ -92,7 +99,7 @@ def test_controller_stop_ignores_camera_errors(tmp_path, monkeypatch):
 
 def test_run_loop_logs_unhandled_exceptions(tmp_path, capsys, monkeypatch):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     def boom(_command):
         raise RuntimeError("kaboom")
@@ -108,7 +115,7 @@ def test_run_loop_logs_unhandled_exceptions(tmp_path, capsys, monkeypatch):
 
 def test_begin_photo_capture_returns_when_not_ready(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     controller.state = ControllerState.COUNTDOWN  # not READY_FOR_PHOTO
 
@@ -130,7 +137,7 @@ def test_begin_photo_capture_returns_when_not_ready(tmp_path, monkeypatch):
 
 def test_photo_capture_worker_counts_down(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     # Make countdown deterministic + fast
     controller.countdown_seconds = 2
@@ -159,7 +166,7 @@ def test_photo_capture_worker_counts_down(tmp_path, monkeypatch):
 
 def test_photo_capture_worker_sets_idle_on_capture_failure(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
     controller._start_live_view_worker = lambda: None
 
     controller.countdown_seconds = 0
@@ -190,7 +197,7 @@ def test_photo_capture_worker_sets_idle_on_capture_failure(tmp_path, monkeypatch
 
 def test_finish_session_worker_transitions_states(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     # Pretend a session is active
     controller.session_active = True
@@ -222,7 +229,7 @@ def test_start_does_not_fail_when_live_view_unavailable(tmp_path, monkeypatch):
     # Simulate preview being unavailable
     monkeypatch.setattr(camera, "start_live_view", lambda: (_ for _ in ()).throw(RuntimeError()))
 
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     # Should not raise
     controller.start()
@@ -233,7 +240,7 @@ def test_start_does_not_fail_when_live_view_unavailable(tmp_path, monkeypatch):
 
 def test_capture_failure_mid_round_sets_contextual_message(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
     controller._live_view_running = True  # prevent worker from starting
 
     controller.countdown_seconds = 0
@@ -269,7 +276,7 @@ def test_capture_failure_mid_round_sets_contextual_message(tmp_path, monkeypatch
 
 def test_set_camera_error_does_not_override_existing_error(tmp_path):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     controller._set_camera_error(
         HealthCode.CAMERA_NOT_DETECTED,
@@ -291,7 +298,7 @@ def test_set_camera_error_does_not_override_existing_error(tmp_path):
 
 def test_stop_live_view_exception_does_not_abort_capture(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     # Force stop_live_view to fail
     monkeypatch.setattr(camera, "stop_live_view", lambda: (_ for _ in ()).throw(RuntimeError("boom")))
@@ -313,7 +320,7 @@ def test_stop_live_view_exception_does_not_abort_capture(tmp_path, monkeypatch):
 
 def test_strip_failure_sets_health_error(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     # Speed everything up
     controller.countdown_seconds = 0
@@ -356,7 +363,7 @@ def test_strip_failure_sets_health_error(tmp_path, monkeypatch):
 
 def test_is_running_reflects_controller_lifecycle(tmp_path):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     assert controller._is_running() is False
 
@@ -369,7 +376,7 @@ def test_is_running_reflects_controller_lifecycle(tmp_path):
 
 def test_get_state_returns_current_state(tmp_path):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     controller.state = ControllerState.READY_FOR_PHOTO
     assert controller._get_state() == ControllerState.READY_FOR_PHOTO
@@ -380,7 +387,7 @@ def test_get_state_returns_current_state(tmp_path):
 
 def test_is_unhealthy_reflects_health_state(tmp_path):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     assert controller._is_unhealthy() is False
 
@@ -395,7 +402,7 @@ def test_is_unhealthy_reflects_health_state(tmp_path):
 
 def test_get_health_source_returns_current_source(tmp_path):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     assert controller._get_health_source() is None
 
@@ -410,7 +417,7 @@ def test_get_health_source_returns_current_source(tmp_path):
 
 def test_poll_camera_health_noop_when_not_idle(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     controller.state = ControllerState.READY_FOR_PHOTO
 
@@ -424,7 +431,7 @@ def test_poll_camera_health_noop_when_not_idle(tmp_path, monkeypatch):
 
 def test_poll_camera_health_marks_ok_when_camera_recovers(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     controller.state = ControllerState.IDLE
 
@@ -444,7 +451,7 @@ def test_poll_camera_health_marks_ok_when_camera_recovers(tmp_path, monkeypatch)
 
 def test_poll_camera_health_sets_error_on_exception(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
     controller.state = ControllerState.IDLE
 
     monkeypatch.setattr(camera, "health_check", lambda: (_ for _ in ()).throw(RuntimeError()))
@@ -458,7 +465,7 @@ def test_poll_camera_health_sets_error_on_exception(tmp_path, monkeypatch):
 
 def test_set_processing_error_does_not_override_existing_error(tmp_path):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     controller._set_camera_error(
         HealthCode.CAMERA_NOT_DETECTED,
@@ -475,7 +482,7 @@ def test_set_processing_error_does_not_override_existing_error(tmp_path):
 
 def test_poll_camera_health_sets_error_when_health_check_returns_false(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     # Must be IDLE for polling to occur
     controller.state = ControllerState.IDLE
@@ -495,7 +502,7 @@ def test_poll_camera_health_sets_error_when_health_check_returns_false(tmp_path,
 
 def test_take_photo_enqueued_before_ready_is_not_lost(tmp_path):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
     controller.countdown_seconds = 0
 
     controller.start()
@@ -510,7 +517,7 @@ def test_take_photo_enqueued_before_ready_is_not_lost(tmp_path):
 
 def test_take_photo_ignored_when_busy(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     # Simulate busy state
     controller.state = ControllerState.COUNTDOWN
@@ -544,7 +551,7 @@ def test_take_photo_ignored_when_busy(tmp_path, monkeypatch):
 
 def test_take_photo_reenqueued_when_not_ready_and_not_busy(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     # State is neither READY nor busy
     controller.state = ControllerState.IDLE
@@ -576,3 +583,46 @@ def test_take_photo_reenqueued_when_not_ready_and_not_busy(tmp_path, monkeypatch
     assert called["n"] == 0, "Should not start capture immediately"
     assert len(put_args) == 1, "Command should be re-enqueued"
     assert put_args[0] is cmd, "Same command object should be re-queued"
+
+
+def test_controller_stores_printer_dependency(tmp_path):
+    camera = FakeCamera(tmp_path)
+
+    class DummyPrinter(NoOpPrinter):
+        pass
+
+    printer = DummyPrinter()
+    controller = PhotoboothController(camera=camera, printer=printer, image_root=tmp_path)
+
+    assert controller.printer is printer
+
+
+def test_set_printer_error_does_not_override_existing_error(tmp_path):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera=camera, printer=NoOpPrinter(), image_root=tmp_path)
+
+    # First set some other error (capture/processing) to simulate a pre-existing sticky error
+    controller._set_processing_error("processing failed")
+    original = controller.get_health()
+
+    assert original.level == HealthLevel.ERROR
+
+    # Now try to set a printer error; it should be ignored
+    controller._set_printer_error("printer failed")
+    after = controller.get_health()
+
+    assert after.level == original.level
+    assert after.code == original.code
+    assert after.message == original.message
+
+
+def test_set_printer_error_sets_printer_failed_and_message(tmp_path):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera=camera, printer=NoOpPrinter(), image_root=tmp_path)
+
+    controller._set_printer_error("lp failed: printer offline")
+
+    health = controller.get_health()
+    assert health.level == HealthLevel.ERROR
+    assert health.code == HealthCode.PRINTER_FAILED
+    assert "printer offline" in (health.message or "")

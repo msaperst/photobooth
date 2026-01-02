@@ -30,6 +30,7 @@ from typing import Optional
 
 from controller.camera_base import Camera
 from controller.health import HealthStatus, HealthCode, HealthLevel, HealthSource
+from controller.printer_base import Printer
 from controller.session_flow import SessionFlow
 
 CAMERA_NOT_DETECTED = "Camera not detected"
@@ -65,7 +66,7 @@ class PhotoboothController:
     # How many photos are taken to build out the strip.
     TOTAL_PHOTOS_PER_SESSION = 3
 
-    def __init__(self, camera: Camera, image_root: Path):
+    def __init__(self, camera: Camera, printer: Printer, image_root: Path):
         self._state_lock = threading.Lock()
 
         # Session state
@@ -77,8 +78,9 @@ class PhotoboothController:
         self.countdown_seconds = 3
         self.countdown_remaining = 0
 
-        # Camera + storage
+        # Printer/Camera + storage
         self.camera = camera
+        self.printer = printer
         self.image_root = image_root
         self.sessions_root = image_root / "sessions"
         self.sessions_root.mkdir(parents=True, exist_ok=True)
@@ -264,4 +266,21 @@ class PhotoboothController:
                     "Contact the operator if the problem persists",
                 ],
                 recoverable=False,
+            )
+
+    def _set_printer_error(self, message: str):
+        with self._health_lock:
+            if self._health_status.level == HealthLevel.ERROR:
+                return
+            self._health_source = HealthSource.PRINTER
+            self._health_status = HealthStatus.error(
+                code=HealthCode.PRINTER_FAILED,
+                message=message,
+                instructions=[
+                    "Check that the printer is powered on",
+                    "Check the USB cable",
+                    "Verify the CUPS queue is configured and online",
+                    "Check paper/ink and clear any jams",
+                ],
+                recoverable=True,
             )
