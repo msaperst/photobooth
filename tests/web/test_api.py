@@ -8,9 +8,20 @@ from web.app import create_app
 @pytest.fixture
 def client(tmp_path):
     camera = FakeCamera(tmp_path)
-    app = create_app(camera=camera, image_root=tmp_path)
+    logo_path = tmp_path / "logo.png"
+    # Minimal valid PNG header so PIL can open if needed later
+    logo_path.write_bytes(b"\x89PNG\r\n\x1a\n")
+    app = create_app(camera=camera, image_root=tmp_path, album_code="TESTALBUM", logo_path=logo_path)
     app.config["TESTING"] = True
     return app.test_client()
+
+
+def test_create_app_requires_env_when_no_overrides(monkeypatch):
+    monkeypatch.delenv("PHOTOBOOTH_IMAGE_ROOT", raising=False)
+    monkeypatch.delenv("PHOTOBOOTH_ALBUM_CODE", raising=False)
+    monkeypatch.delenv("PHOTOBOOTH_LOGO_PATH", raising=False)
+    with pytest.raises(RuntimeError):
+        create_app(camera=None)
 
 
 def test_status_endpoint(client):
@@ -100,7 +111,9 @@ def test_sessions_route_serves_file(tmp_path, monkeypatch):
     test_file.write_text("hello photobooth")
 
     # Patch the SESSIONS_ROOT used by the app
-    app = create_app(camera=None)
+    logo_path = tmp_path / "logo.png"
+    logo_path.write_bytes(b"\x89PNG\r\n\x1a\n")
+    app = create_app(camera=None, image_root=tmp_path, album_code="TESTALBUM", logo_path=logo_path)
     app.config["SESSIONS_ROOT"] = sessions_root
     client = app.test_client()
 

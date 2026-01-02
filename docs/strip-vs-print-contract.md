@@ -104,16 +104,25 @@ A text box will be placed under each strip (so two total)
 The print-only retrieval area under each strip contains a **QR code + two text lines**:
 
 - **QR code:** left-aligned, sized to the full height of the retrieval area (`192 × 192`), pointing to:
-  - `https://saperstonestudios.com#album=<ALBUM_CODE>`
+    - `https://saperstonestudios.com#album=<ALBUM_CODE>`
 - **Text (to the right of the QR, centered):**
-  - `Find your photos online`
-  - `saperstonestudios.com`
+    - `Find your photos online`
+    - `saperstonestudios.com`
 
 `<ALBUM_CODE>` is the operator-provided event album code configured in the controller.
 
 ### Allowed Print Layout Adjustments (Explicit)
 
 - Background color for print padding/text area is permitted (typically white).
-- Text layout may use one or two lines; QR and text may be styled differently for readability, but content must stay within its per-strip box (no seam crossing).
+- Text layout may use one or two lines; URL and code may be styled differently for readability.
 - If printer/driver requires, the entire print image may be rotated before sending to CUPS, but the pixel canvas
   and DPI metadata must remain correct.
+
+## Deployment configuration
+
+Event-level configuration is provided at deployment time via environment variables (systemd EnvironmentFile):
+
+- PHOTOBOOTH_LOGO_PATH (path to logo PNG)
+- PHOTOBOOTH_ALBUM_CODE (operator-provided album code)
+
+These are read by the web app at startup and injected into the controller.

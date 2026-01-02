@@ -51,7 +51,8 @@ class PhotoboothController:
     # How often to attempt recovery when unhealthy (camera off/unplugged)
     RECOVERY_ATTEMPT_INTERVAL = 2.0  # seconds
 
-    def __init__(self, camera: Camera, image_root: Path):
+    def __init__(self, camera: Camera, image_root: Path, *, strip_logo_path: Path | None = None,
+                 event_album_code: str | None = None):
         self._state_lock = threading.Lock()
 
         # Session state
@@ -69,10 +70,10 @@ class PhotoboothController:
         self.sessions_root.mkdir(parents=True, exist_ok=True)
         self._session_storage = None
         self._captured_image_paths = []
-        # Default logo used for strip/print rendering. Keep this as a single constant
-        # so it's easy to relocate/rename without chasing references.
-        self.strip_logo_path = Path(__file__).resolve().parents[1] / "imaging" / "logo.png"
-        self.event_album_code = "Saperstone2025"
+        # Event-level configuration (injected by web/app.py from env in deployment).
+        default_logo = Path(__file__).resolve().parents[1] / "imaging" / "logo.png"
+        self.strip_logo_path = strip_logo_path or default_logo
+        self.event_album_code = event_album_code or "Sample Code"
 
         # Controller loop
         self.state = ControllerState.IDLE
