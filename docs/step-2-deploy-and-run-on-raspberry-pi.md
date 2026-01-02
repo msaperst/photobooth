@@ -134,6 +134,10 @@ sudo systemctl enable photobooth
 sudo systemctl start photobooth
 ```
 
+> The systemd unit uses
+> `/opt/photobooth/venv/bin/python -m gunicorn`
+> to avoid issues with missing gunicorn executables.
+
 Check status:
 
 ```bash
