@@ -77,7 +77,7 @@ def _has_nonwhite_pixels(img, box_origin, box_size, white):
     return False
 
 
-def test_print_contains_text_pixels_in_both_halves():
+def basic_strip_setup():
     strip = Image.new("RGB", (600, 1596), (255, 0, 0))
 
     layout = PrintLayout(
@@ -94,11 +94,38 @@ def test_print_contains_text_pixels_in_both_halves():
     sheet = render_print_sheet(strip=strip, layout=layout, album_code="CODE123")
     white = layout.background_color
 
+    return layout, sheet, white
+
+
+def test_print_contains_text_pixels_in_both_halves():
+    layout, sheet, white = basic_strip_setup()
+
     left_origin = (12, 1596)
     right_origin = (612, 1596)
 
     assert _has_nonwhite_pixels(sheet, left_origin, layout.text_box_size, white)
     assert _has_nonwhite_pixels(sheet, right_origin, layout.text_box_size, white)
+
+
+def test_print_qr_and_text_regions_have_pixels_in_both_halves():
+    layout, sheet, white = basic_strip_setup()
+
+    y0 = layout.text_top_y
+    qr_size = layout.text_box_size[1]
+    text_w = layout.text_box_size[0] - qr_size
+    text_h = layout.text_box_size[1]
+
+    # QR is a 192x192 square, left-aligned in each text box.
+    left_qr_origin = (layout.strip_inner_padding, y0)
+    right_qr_origin = (600 + layout.strip_inner_padding, y0)
+    assert _has_nonwhite_pixels(sheet, left_qr_origin, (qr_size, qr_size), white)
+    assert _has_nonwhite_pixels(sheet, right_qr_origin, (qr_size, qr_size), white)
+
+    # Text is centered in the remaining width to the right of the QR.
+    left_text_origin = (layout.strip_inner_padding + qr_size, y0)
+    right_text_origin = (600 + layout.strip_inner_padding + qr_size, y0)
+    assert _has_nonwhite_pixels(sheet, left_text_origin, (text_w, text_h), white)
+    assert _has_nonwhite_pixels(sheet, right_text_origin, (text_w, text_h), white)
 
 
 def test_print_seam_in_text_region_is_background():

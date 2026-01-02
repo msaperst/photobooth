@@ -99,17 +99,21 @@ A text box will be placed under each strip (so two total)
 - Left origin: `(12, 1596)`
 - Right origin: `(612, 1596)`
 
-### Print-only Text Content
+### Print-only Retrieval Area Content
 
-- Print-only text includes 3 lines:
-    - `Find your photos online`
-    - `saperstonestudios.com#album`
-    - A custom album code (≈ 20 characters)
-- The URL is expected to present a modal prompting for the code, then route to the session photos.
+The print-only retrieval area under each strip contains a **QR code + two text lines**:
+
+- **QR code:** left-aligned, sized to the full height of the retrieval area (`192 × 192`), pointing to:
+  - `https://saperstonestudios.com#album=<ALBUM_CODE>`
+- **Text (to the right of the QR, centered):**
+  - `Find your photos online`
+  - `saperstonestudios.com`
+
+`<ALBUM_CODE>` is the operator-provided event album code configured in the controller.
 
 ### Allowed Print Layout Adjustments (Explicit)
 
 - Background color for print padding/text area is permitted (typically white).
-- Text layout may use one or two lines; URL and code may be styled differently for readability.
+- Text layout may use one or two lines; QR and text may be styled differently for readability, but content must stay within its per-strip box (no seam crossing).
 - If printer/driver requires, the entire print image may be rotated before sending to CUPS, but the pixel canvas
   and DPI metadata must remain correct.
