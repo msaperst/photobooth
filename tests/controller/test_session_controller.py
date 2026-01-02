@@ -128,3 +128,86 @@ def test_finish_session_recovers_from_unexpected_processing_exception(tmp_path, 
     assert health.level == HealthLevel.ERROR
     assert health.message is not None
     assert "disk full" in health.message
+
+
+def test_start_session_stores_print_count(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera, tmp_path)
+
+    controller.countdown_seconds = 0
+    monkeypatch.setattr("time.sleep", lambda _: None)
+
+    controller.start()
+
+    controller.enqueue(
+        Command(CommandType.START_SESSION, payload={"image_count": 3, "print_count": 4})
+    )
+
+    wait_for(lambda: controller.session_active is True)
+
+    assert controller.print_count == 4
+    status = controller.get_status()
+    assert status["print_count"] == 4
+
+
+def test_start_session_clamps_print_count(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera, tmp_path)
+
+    controller.countdown_seconds = 0
+    monkeypatch.setattr("time.sleep", lambda _: None)
+
+    controller.start()
+
+    controller.enqueue(
+        Command(CommandType.START_SESSION, payload={"image_count": 3, "print_count": 999})
+    )
+    wait_for(lambda: controller.session_active is True)
+
+    assert controller.print_count == 4
+
+
+def test_start_session_invalid_print_count_defaults_to_one(tmp_path, monkeypatch):
+    """
+    Branch coverage:
+    - int(raw_print_count) raises ValueError/TypeError
+    - print_count defaults to 1
+    """
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera, tmp_path)
+
+    controller.countdown_seconds = 0
+    monkeypatch.setattr("time.sleep", lambda _: None)
+
+    controller.start()
+
+    # ValueError path: int("not-an-int") -> ValueError
+    controller.enqueue(
+        Command(CommandType.START_SESSION, payload={"image_count": 3, "print_count": "not-an-int"})
+    )
+    wait_for(lambda: controller.session_active is True)
+
+    assert controller.print_count == 1
+    assert controller.get_status()["print_count"] == 1
+
+
+def test_start_session_print_count_below_one_is_clamped_to_one(tmp_path, monkeypatch):
+    """
+    Branch coverage:
+    - print_count < 1 triggers clamp to 1
+    """
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera, tmp_path)
+
+    controller.countdown_seconds = 0
+    monkeypatch.setattr("time.sleep", lambda _: None)
+
+    controller.start()
+
+    controller.enqueue(
+        Command(CommandType.START_SESSION, payload={"image_count": 3, "print_count": 0})
+    )
+    wait_for(lambda: controller.session_active is True)
+
+    assert controller.print_count == 1
+    assert controller.get_status()["print_count"] == 1

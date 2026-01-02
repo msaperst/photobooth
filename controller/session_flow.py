@@ -35,6 +35,20 @@ class SessionFlow:
             self._controller.session_active = True
             self._controller.photos_taken = 0
             self._controller.total_photos = payload.get("image_count", 3)
+            raw_print_count = payload.get("print_count", 1)
+            try:
+                print_count = int(raw_print_count)
+            except (TypeError, ValueError):
+                print_count = 1  # default to one print
+
+            # Clamp to a sane range to prevent runaway jobs later.
+            # UI intends 1..4 (for 2/4/6/8 strips -> 1/2/3/4 print sheets).
+            if print_count < 1:
+                print_count = 1
+            if print_count > 4:
+                print_count = 4
+            self._controller.print_count = print_count
+
             from controller.controller import ControllerState  # local import
             self._controller._captured_image_paths = []
             self._controller._session_storage = SessionStorage(

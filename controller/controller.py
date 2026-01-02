@@ -68,6 +68,7 @@ class PhotoboothController:
         # Session state
         self.total_photos = 3
         self.photos_taken = 0
+        self.print_count = 1
         self.session_active = False
 
         self.countdown_seconds = 3
@@ -134,6 +135,7 @@ class PhotoboothController:
                 "busy": self.state != ControllerState.IDLE,
                 "photos_taken": self.photos_taken,
                 "total_photos": self.total_photos,
+                "print_count": self.print_count,
                 "countdown_remaining": self.countdown_remaining,
             }
 
