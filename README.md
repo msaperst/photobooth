@@ -327,13 +327,13 @@ The Raspberry Pi setup and deployment process is documented in three steps:
 
 Steps 1 and 2 can be performed manually using the documentation below, or by using the provided scripts:
 
-- Step 1 script: `deployment/scripts/step1_configure_pi.sh`
+- Step 1 script: `deployment/scripts/step1_provision_pi.sh`
 - Step 2 script: `deployment/scripts/step2_deploy_app.sh`
 
 To run the scripts:
 
 ```bash
-sudo ./deployment/scripts/step1_configure_pi.sh
+sudo ./deployment/scripts/step1_provision_pi.sh
 sudo ./deployment/scripts/step2_deploy_app.sh
 ```
 

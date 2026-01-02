@@ -1,7 +1,7 @@
 > **Automation available**
 >
 > All steps in this document can be performed automatically using:
-> `deployment/scripts/step1_configure_pi.sh`
+> `deployment/scripts/step1_provision_pi.sh`
 >
 > The script encodes the steps below exactly. Manual execution is still documented for clarity and debugging.
 
@@ -36,6 +36,7 @@ groups photobooth
 ```
 
 ---
+
 ## 1.1 Update Raspberry Pi and install dependencies
 
 Install the basic dependencies
@@ -245,14 +246,15 @@ If this works → 🎉 camera integration at OS level is DONE
 rm test_*.jpg
 ```
 
-
 ---
 
 ## 1.9 Configure Raspberry Pi as Wi‑Fi Access Point (AP)
 
-This configures the Pi to broadcast an **open (password‑free)** Wi‑Fi network for guests and the iPad to connect to at events.
+This configures the Pi to broadcast an **open (password‑free)** Wi‑Fi network for guests and the iPad to connect to at
+events.
 
 Design:
+
 - Wi‑Fi (`wlan0`) runs as an AP only
 - Ethernet (`eth0`) remains the management interface (SSH during setup)
 - SSID: `Photobooth`
@@ -262,6 +264,7 @@ Design:
 - Photobooth web UI will be reachable at: `http://192.168.4.1:5000`
 
 Safety:
+
 - **Do not run these steps over Wi‑Fi.** You will disconnect `wlan0` from client mode.
 - Ensure you are connected via **Ethernet** (recommended) or have local console access.
 
@@ -272,6 +275,7 @@ nmcli device status
 ```
 
 Expected during setup:
+
 - `eth0` is **connected**
 - `wlan0` is currently connected to your home Wi‑Fi (client mode) OR disconnected
 
