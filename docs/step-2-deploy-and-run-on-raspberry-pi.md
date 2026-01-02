@@ -109,8 +109,17 @@ Required values:
 
 Important:
 
-- The app will fail fast if any required value is missing.
-- This is intentional to prevent accidental “wrong event” deployments.
+- The service will start even if these values are missing (headless Pi), but the booth will be UNHEALTHY.
+- When unhealthy, /healthz will show an explicit CONFIG_INVALID error with exact fix instructions.
+- The UI/API will refuse to start sessions or take photos while unhealthy.
+
+After changing /etc/photobooth.env or replacing the logo, restart the service:
+
+```bash
+sudo systemctl restart photobooth
+```
+
+Or power-cycle the Pi.
 
 ---
 
