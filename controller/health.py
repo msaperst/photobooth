@@ -14,12 +14,14 @@ class HealthCode(Enum):
     CAMERA_NOT_DETECTED = auto()
     CAMERA_DISCONNECTED = auto()
     STRIP_CREATION_FAILED = auto()
+    CONFIG_INVALID = auto()
     UNKNOWN_ERROR = auto()
 
 
 class HealthSource(Enum):
     CAPTURE = auto()
     PROCESSING = auto()
+    CONFIG = auto()
 
 
 @dataclass(frozen=True)

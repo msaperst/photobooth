@@ -3,6 +3,7 @@
 This step assumes Raspberry Pi OS is installed and basic dependencies are in place (see Step 0 and Step 1).
 
 Goals:
+
 - Deploy the repo to a known location on the Pi
 - Create a dedicated Python virtual environment
 - Configure event-level settings outside the repo
@@ -23,6 +24,7 @@ Recommended locations:
 - systemd unit: /etc/systemd/system/photobooth.service
 
 Notes:
+
 - The app does NOT store sessions inside the repo checkout.
 - All session files live under PHOTOBOOTH_IMAGE_ROOT/sessions.
 
@@ -71,6 +73,7 @@ python3 -m venv venv
 ```bash
 sudo mkdir -p /var/lib/photobooth/sessions
 sudo chown -R photobooth:photobooth /var/lib/photobooth
+sudo chmod 777 /var/lib/photobooth  #optional
 ```
 
 Copy your event logo to the Pi:
@@ -95,7 +98,7 @@ sudo chmod 0644 /etc/photobooth.env
 Edit it:
 
 ```bash
-sudo nano /etc/photobooth.env
+sudo vim /etc/photobooth.env
 ```
 
 Required values:
@@ -105,6 +108,7 @@ Required values:
 - PHOTOBOOTH_ALBUM_CODE=CHANGE_ME
 
 Important:
+
 - The app will fail fast if any required value is missing.
 - This is intentional to prevent accidental “wrong event” deployments.
 

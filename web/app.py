@@ -7,6 +7,7 @@ from pathlib import Path
 from flask import Flask, jsonify, request, render_template, send_from_directory
 
 from controller.controller import PhotoboothController, Command, CommandType
+from controller.health import HealthLevel
 from controller.gphoto_camera import GPhotoCamera
 
 
@@ -21,25 +22,37 @@ def create_app(camera=None, image_root: Path | None = None, *, album_code: str |
 
     Tests may pass these explicitly.
     """
+    # Deployment config is required for operation, but the server should still start
+    # (headless Pi) so /healthz can surface actionable errors.
+    config_problems: list[str] = []
+    env_root = os.getenv("PHOTOBOOTH_IMAGE_ROOT")
+    env_album_code = os.getenv("PHOTOBOOTH_ALBUM_CODE")
+    env_logo = os.getenv("PHOTOBOOTH_LOGO_PATH")
+
     if image_root is None:
-        env_root = os.getenv("PHOTOBOOTH_IMAGE_ROOT")
         if not env_root:
-            raise RuntimeError("PHOTOBOOTH_IMAGE_ROOT is required (e.g. /var/lib/photobooth)")
-        image_root = Path(env_root)
+            config_problems.append("PHOTOBOOTH_IMAGE_ROOT is missing")
+            image_root = Path("/tmp/photobooth_unconfigured")
+        else:
+            image_root = Path(env_root)
 
     if album_code is None:
-        album_code = os.getenv("PHOTOBOOTH_ALBUM_CODE")
-        if not album_code:
-            raise RuntimeError("PHOTOBOOTH_ALBUM_CODE is required (event album code)")
+        if not env_album_code:
+            config_problems.append("PHOTOBOOTH_ALBUM_CODE is missing")
+            album_code = "MISSING"
+        else:
+            album_code = env_album_code
 
     if logo_path is None:
-        env_logo = os.getenv("PHOTOBOOTH_LOGO_PATH")
         if not env_logo:
-            raise RuntimeError("PHOTOBOOTH_LOGO_PATH is required (path to logo.png)")
-        logo_path = Path(env_logo)
+            config_problems.append("PHOTOBOOTH_LOGO_PATH is missing")
+            # Safe fallback for startup; operations are gated by health.
+            logo_path = Path(__file__).resolve().parents[1] / "imaging" / "logo.png"
+        else:
+            logo_path = Path(env_logo)
 
-    if not logo_path.exists() or not logo_path.is_file():
-        raise RuntimeError(f"PHOTOBOOTH_LOGO_PATH does not exist or is not a file: {logo_path}")
+    if logo_path and (not logo_path.exists() or not logo_path.is_file()):
+        config_problems.append(f"PHOTOBOOTH_LOGO_PATH is invalid: {logo_path}")
 
     app = Flask(__name__)
     sessions_root = image_root / "sessions"
@@ -56,6 +69,22 @@ def create_app(camera=None, image_root: Path | None = None, *, album_code: str |
         event_album_code=album_code,
     )
     controller.start()
+
+    if config_problems:
+        controller.set_config_error(
+            message="Deployment configuration is missing or invalid",
+            instructions=[
+                "Fix /etc/photobooth.env and ensure it contains:",
+                "  PHOTOBOOTH_IMAGE_ROOT=/var/lib/photobooth",
+                "  PHOTOBOOTH_ALBUM_CODE=<EVENT_ALBUM_CODE>",
+                "  PHOTOBOOTH_LOGO_PATH=/var/lib/photobooth/logo.png",
+                "Problems detected:",
+                *[f"  - {p}" for p in config_problems],
+                "After fixing config, restart the service:",
+                "  sudo systemctl restart photobooth",
+                "Or power-cycle the Pi.",
+            ],
+        )
     app.controller = controller
 
     @app.route("/", methods=["GET"])
@@ -78,6 +107,9 @@ def create_app(camera=None, image_root: Path | None = None, *, album_code: str |
 
     @app.route("/start-session", methods=["POST"])
     def start_session():
+        health = controller.get_health()
+        if health.level != HealthLevel.OK:
+            return jsonify({"ok": False, "error": "unhealthy", "health": health.to_dict()}), 503
         if app.controller.get_status()["busy"]:
             return jsonify({"ok": False, "error": "busy"}), 409
 
@@ -95,6 +127,9 @@ def create_app(camera=None, image_root: Path | None = None, *, album_code: str |
 
     @app.route("/take-photo", methods=["POST"])
     def take_photo():
+        health = controller.get_health()
+        if health.level != HealthLevel.OK:
+            return jsonify({"ok": False, "error": "unhealthy", "health": health.to_dict()}), 503
         app.controller.enqueue(
             Command(CommandType.TAKE_PHOTO)
         )

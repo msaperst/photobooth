@@ -105,6 +105,28 @@ class PhotoboothController:
 
         self._thread.start()
 
+    # ---------- Deployment / config helpers ----------
+
+    def set_config_error(self, *, message: str, instructions: list[str]) -> None:
+        """Mark the controller unhealthy due to deployment configuration issues.
+
+        This is intended to be called once at startup by the web app when required
+        deployment configuration is missing/invalid. The service should still start
+        so that /healthz can surface actionable errors on a headless Pi.
+        """
+        with self._health_lock:
+            # Do not overwrite an existing error; config errors are "first cause".
+            if self._health_status.level == HealthLevel.ERROR:
+                return
+
+            self._health_source = HealthSource.CONFIG
+            self._health_status = HealthStatus.error(
+                code=HealthCode.CONFIG_INVALID,
+                message=message,
+                instructions=instructions,
+                recoverable=True,
+            )
+
     def stop(self):
         self._running = False
         try:
@@ -217,6 +239,10 @@ class PhotoboothController:
 
     def _mark_camera_ok(self):
         with self._health_lock:
+            # Never clear deployment/config errors from camera polling.
+            if self._health_source == HealthSource.CONFIG:
+                return
+
             self._health_source = None
             self._health_status = HealthStatus.ok()
 

@@ -1,5 +1,6 @@
 import pytest
 from flask import json
+from pathlib import Path
 
 from tests.fakes.fake_camera import FakeCamera
 from web.app import create_app
@@ -20,8 +21,31 @@ def test_create_app_requires_env_when_no_overrides(monkeypatch):
     monkeypatch.delenv("PHOTOBOOTH_IMAGE_ROOT", raising=False)
     monkeypatch.delenv("PHOTOBOOTH_ALBUM_CODE", raising=False)
     monkeypatch.delenv("PHOTOBOOTH_LOGO_PATH", raising=False)
-    with pytest.raises(RuntimeError):
-        create_app(camera=None)
+    app = create_app(camera=FakeCamera(Path("/tmp")))
+    app.config["TESTING"] = True
+    client = app.test_client()
+    resp = client.get("/healthz")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["level"] == "ERROR"
+    assert data["code"] == "CONFIG_INVALID"
+    assert "PHOTOBOOTH_IMAGE_ROOT" in "\n".join(data.get("instructions") or [])
+
+
+def test_operations_are_blocked_when_unhealthy(monkeypatch, tmp_path):
+    monkeypatch.delenv("PHOTOBOOTH_IMAGE_ROOT", raising=False)
+    monkeypatch.delenv("PHOTOBOOTH_ALBUM_CODE", raising=False)
+    monkeypatch.delenv("PHOTOBOOTH_LOGO_PATH", raising=False)
+    app = create_app(camera=FakeCamera(tmp_path))
+    app.config["TESTING"] = True
+    client = app.test_client()
+
+    r = client.post("/start-session", data=json.dumps({"print_count": 1}), content_type="application/json")
+    assert r.status_code == 503
+    payload = r.get_json()
+    assert payload["ok"] is False
+    assert payload["error"] == "unhealthy"
+    assert payload["health"]["code"] == "CONFIG_INVALID"
 
 
 def test_status_endpoint(client):
