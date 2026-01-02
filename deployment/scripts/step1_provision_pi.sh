@@ -53,6 +53,68 @@ echo "    gsettings set org.gnome.desktop.media-handling automount-open false"
 echo "    systemctl --user mask gvfs-gphoto2-volume-monitor.service"
 echo "    systemctl --user stop gvfs-gphoto2-volume-monitor.service"
 
+
+echo "==> Configuring Wi-Fi Access Point (AP) via NetworkManager"
+echo "    SSID: Photobooth (open / no password)"
+echo "    AP IP: 192.168.4.1/24"
+
+# Safety: switching wlan0 into AP mode will drop any existing Wi-Fi client connection.
+# Require Ethernet (eth0) connectivity unless explicitly overridden.
+if ! ip link show eth0 >/dev/null 2>&1; then
+  echo "WARNING: eth0 not present. Ensure you have local console access before proceeding."
+else
+  if ! ip link show eth0 | grep -q "state UP"; then
+    if [[ "${PHOTOBOOTH_ALLOW_NO_ETHERNET:-}" != "1" ]]; then
+      echo "ERROR: eth0 is not UP. Connect Ethernet before enabling AP to avoid lockout."
+      echo "       If you are on local console and accept the risk, re-run with: PHOTOBOOTH_ALLOW_NO_ETHERNET=1"
+      exit 1
+    fi
+  fi
+fi
+
+# hostapd is used internally by NetworkManager for AP mode on Raspberry Pi OS / Raspbian.
+apt-get install -y hostapd
+
+# IMPORTANT: Do NOT run standalone dnsmasq when using NetworkManager 'ipv4.method shared'.
+# If the dnsmasq package is installed, it can conflict and prevent clients from receiving an IP address.
+if dpkg -s dnsmasq >/dev/null 2>&1; then
+  echo "==> Removing standalone dnsmasq (conflicts with NetworkManager shared-mode DHCP)"
+  systemctl stop dnsmasq >/dev/null 2>&1 || true
+  systemctl disable dnsmasq >/dev/null 2>&1 || true
+  apt-get purge -y dnsmasq
+  echo "==> Restarting NetworkManager after dnsmasq removal"
+  systemctl restart NetworkManager
+fi
+
+# Ensure nmcli is available (NetworkManager).
+if ! command -v nmcli >/dev/null 2>&1; then
+  echo "ERROR: nmcli (NetworkManager) not found. AP setup requires NetworkManager."
+  exit 1
+fi
+
+# Recreate the AP connection deterministically (nmcli behavior varies by distro/version).
+if nmcli -t -f NAME connection show | grep -qx "photobooth-ap"; then
+  echo "==> Removing existing NetworkManager connection: photobooth-ap"
+  nmcli connection delete photobooth-ap
+fi
+
+echo "==> Creating NetworkManager AP connection: photobooth-ap"
+nmcli connection add type wifi ifname wlan0 con-name photobooth-ap autoconnect yes ssid Photobooth
+
+echo "==> Configuring AP mode + shared IPv4"
+nmcli connection modify photobooth-ap 802-11-wireless.mode ap
+nmcli connection modify photobooth-ap 802-11-wireless.band bg
+nmcli connection modify photobooth-ap ipv4.method shared
+nmcli connection modify photobooth-ap ipv4.addresses 192.168.4.1/24
+
+echo "==> Bringing up AP"
+nmcli connection up photobooth-ap
+
+echo "==> AP configured. Verify:"
+echo "    - SSID visible: Photobooth"
+echo "    - Pi AP IP: 192.168.4.1"
+echo "    - Web UI: http://192.168.4.1:5000"
+echo "    - SSH: ssh photobooth@192.168.4.1"
 echo "==> Done."
 echo "Next steps:"
 echo "  1) Reboot: say 'sudo reboot' (USB group changes require re-login)"
