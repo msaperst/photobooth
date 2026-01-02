@@ -1,3 +1,10 @@
+> **Automation available**
+>
+> All steps in this document can be performed automatically using:
+> `deployment/scripts/step2_deploy_app.sh`
+>
+> The script installs the application, configures systemd, and starts the service.
+
 # Step 2: Deploy and Run on Raspberry Pi
 
 This step assumes Raspberry Pi OS is installed and basic dependencies are in place (see Step 0 and Step 1).

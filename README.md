@@ -319,11 +319,23 @@ See: [testing-and-ci.md](docs/testing-and-ci.md)
 
 ### Setup
 
-Step 0: [step-0-raspberry-pi-setup.md](docs/step-0-raspberry-pi-setup.md)
+The Raspberry Pi setup and deployment process is documented in three steps:
 
-Step 1: [step-1-raspberry-pi-configure.md](docs/step-1-raspberry-pi-configure.md)
+- **[Step 0](docs/step-0-raspberry-pi-setup.md)**: Base OS installation and initial access
+- **[Step 1](docs/step-1-raspberry-pi-configure.md)**: System configuration (users, camera, networking, access point)
+- **[Step 2](docs/step-2-deploy-and-run-on-raspberry-pi.md)**: Application deployment and runtime setup
 
-Step 2: [step-2-deploy-and-run-on-raspberry-pi.md](docs/step-2-deploy-and-run-on-raspberry-pi.md)
+Steps 1 and 2 can be performed manually using the documentation below, or by using the provided scripts:
+
+- Step 1 script: `deployment/scripts/step1_configure_pi.sh`
+- Step 2 script: `deployment/scripts/step2_deploy_app.sh`
+
+To run the scripts:
+
+```bash
+sudo ./deployment/scripts/step1_configure_pi.sh
+sudo ./deployment/scripts/step2_deploy_app.sh
+```
 
 ### Recovery and Errors
 
