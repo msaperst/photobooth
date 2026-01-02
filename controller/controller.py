@@ -72,7 +72,7 @@ class PhotoboothController:
         # Default logo used for strip/print rendering. Keep this as a single constant
         # so it's easy to relocate/rename without chasing references.
         self.strip_logo_path = Path(__file__).resolve().parents[1] / "imaging" / "logo.png"
-        self.event_album_code = "MaxMitzvah2026"
+        self.event_album_code = "Saperstone2025"
 
         # Controller loop
         self.state = ControllerState.IDLE

@@ -2,3 +2,4 @@ flask
 pytest
 pytest-cov
 pillow
+qrcode
