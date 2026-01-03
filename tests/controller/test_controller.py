@@ -466,7 +466,7 @@ def test_poll_camera_health_marks_ok_when_camera_recovers(tmp_path, monkeypatch)
 def test_poll_camera_health_sets_error_on_exception(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
     controller = PhotoboothController(camera, tmp_path)
-    controller.state = ControllerState.IDLE
+    controller.state = ControllerState.READY_FOR_PHOTO
 
     monkeypatch.setattr(camera, "health_check", lambda: (_ for _ in ()).throw(RuntimeError()))
 
