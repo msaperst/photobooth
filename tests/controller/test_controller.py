@@ -20,6 +20,14 @@ class NoOpPrinter(Printer):
         return
 
 
+class SpyPrinter(NoOpPrinter):
+    def __init__(self):
+        self.preflight_called = False
+
+    def preflight(self) -> None:
+        self.preflight_called = True
+
+
 def test_manual_photo_progression(tmp_path):
     camera = FakeCamera(tmp_path)
     controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
@@ -735,13 +743,6 @@ def test_start_print_job_worker_exits_when_print_in_flight(tmp_path, monkeypatch
 def test_poll_printer_health_returns_when_print_in_flight(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
 
-    class SpyPrinter(NoOpPrinter):
-        def __init__(self):
-            self.preflight_called = False
-
-        def preflight(self) -> None:
-            self.preflight_called = True
-
     printer = SpyPrinter()
     controller = PhotoboothController(camera=camera, printer=printer, image_root=tmp_path)
 
@@ -761,13 +762,6 @@ def test_poll_printer_health_returns_when_print_in_flight(tmp_path, monkeypatch)
 
 def test_poll_printer_health_returns_when_no_pending_job(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
-
-    class SpyPrinter(NoOpPrinter):
-        def __init__(self):
-            self.preflight_called = False
-
-        def preflight(self) -> None:
-            self.preflight_called = True
 
     printer = SpyPrinter()
     controller = PhotoboothController(camera=camera, printer=printer, image_root=tmp_path)
@@ -790,13 +784,6 @@ def test_poll_printer_health_returns_when_no_pending_job(tmp_path, monkeypatch):
 
 def test_poll_printer_health_throttles_recovery_attempts(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
-
-    class SpyPrinter(NoOpPrinter):
-        def __init__(self):
-            self.preflight_called = False
-
-        def preflight(self) -> None:
-            self.preflight_called = True
 
     printer = SpyPrinter()
     controller = PhotoboothController(camera=camera, printer=printer, image_root=tmp_path)
@@ -847,7 +834,9 @@ def test_set_config_error_does_not_overwrite_existing_error(tmp_path):
     """Cover the early-return branch in set_config_error when health is already ERROR."""
     camera = FakeCamera(tmp_path)
     camera.connected = False  # start() will mark capture error
-    controller = PhotoboothController(camera, tmp_path)
+
+    printer = SpyPrinter()
+    controller = PhotoboothController(camera, printer, tmp_path)
     controller.start()
 
     # Sanity: controller is unhealthy due to camera.
