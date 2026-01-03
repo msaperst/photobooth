@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { getButtonLabel } from "../../web/static/ui_logic.js";
 import { getConnectionHealth } from "../../web/static/ui_state.js";
+import { computeRecentStripUpdate } from "../../web/static/ui_strip.js";
 
 describe("getButtonLabel", () => {
     it("shows Take Photo when idle", () => {
@@ -76,5 +77,65 @@ describe("getConnectionHealth", () => {
                 "If the issue persists, restart the photobooth system",
             ]
         });
+    });
+});
+
+describe("computeRecentStripUpdate", () => {
+    it("hides when no URL", () => {
+        const out = computeRecentStripUpdate({
+            status: { busy: false },
+            lastMostRecentStripUrl: "/sessions/x/strip.jpg",
+            lastBusy: true,
+            shouldAutoScrollToStrip: true,
+            nowMs: 123,
+        });
+
+        expect(out.show).toBe(false);
+        expect(out.shouldScroll).toBe(false);
+        expect(out.nextLastMostRecentStripUrl).toBe(null);
+        expect(out.nextShouldAutoScrollToStrip).toBe(false);
+    });
+
+    it("sets srcs and arms auto-scroll when URL changes", () => {
+        const out = computeRecentStripUpdate({
+            status: { busy: true, most_recent_strip_url: "/sessions/a/strip.jpg" },
+            lastMostRecentStripUrl: null,
+            lastBusy: true,
+            shouldAutoScrollToStrip: false,
+            nowMs: 999,
+        });
+
+        expect(out.show).toBe(true);
+        expect(out.stripSrc).toBe("/sessions/a/strip.jpg?v=999");
+        expect(out.qrSrc).toBe("/qr/most-recent-strip.png?v=999");
+        expect(out.shouldScroll).toBe(false);
+        expect(out.nextLastMostRecentStripUrl).toBe("/sessions/a/strip.jpg");
+        expect(out.nextShouldAutoScrollToStrip).toBe(true);
+    });
+
+    it("scrolls exactly once after busy true->false when armed", () => {
+        const out = computeRecentStripUpdate({
+            status: { busy: false, most_recent_strip_url: "/sessions/a/strip.jpg" },
+            lastMostRecentStripUrl: "/sessions/a/strip.jpg",
+            lastBusy: true,
+            shouldAutoScrollToStrip: true,
+            nowMs: 111,
+        });
+
+        expect(out.shouldScroll).toBe(true);
+        expect(out.nextShouldAutoScrollToStrip).toBe(false);
+    });
+
+    it("does not re-scroll when not armed", () => {
+        const out = computeRecentStripUpdate({
+            status: { busy: false, most_recent_strip_url: "/sessions/a/strip.jpg" },
+            lastMostRecentStripUrl: "/sessions/a/strip.jpg",
+            lastBusy: true,
+            shouldAutoScrollToStrip: false,
+            nowMs: 222,
+        });
+
+        expect(out.shouldScroll).toBe(false);
+        expect(out.nextShouldAutoScrollToStrip).toBe(false);
     });
 });

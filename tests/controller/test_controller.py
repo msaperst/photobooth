@@ -1,5 +1,6 @@
 import threading
 import time
+from pathlib import Path
 
 from controller.controller import (
     PhotoboothController,
@@ -9,7 +10,6 @@ from controller.controller import (
 )
 from controller.health import HealthLevel, HealthCode, HealthSource
 from imaging.strip_errors import StripCreationError
-from tests.fakes.fake_camera import FakeCamera
 from tests.helpers import wait_for
 
 
@@ -621,3 +621,56 @@ def test_set_config_error_does_not_overwrite_existing_error(tmp_path):
     assert controller.get_health().level == HealthLevel.ERROR
     assert controller.get_health().code == HealthCode.CAMERA_NOT_DETECTED
     assert controller._get_health_source() == HealthSource.CAPTURE
+
+
+from tests.fakes.fake_camera import FakeCamera
+
+
+def test_get_status_has_no_most_recent_strip_url_when_no_session_storage(tmp_path):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera, tmp_path)
+
+    status = controller.get_status()
+
+    # Depending on your implementation, it might omit the key or set it to None.
+    assert status.get("most_recent_strip_url") in (None,)
+
+
+def test_get_status_includes_most_recent_strip_url_when_strip_exists(tmp_path):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera, tmp_path)
+
+    # Create a real file under sessions_root and point storage.strip_path to it.
+    fake_strip = controller.sessions_root / "2026-01-02" / "session_x" / "strip.jpg"
+    fake_strip.parent.mkdir(parents=True, exist_ok=True)
+    fake_strip.write_bytes(b"\xff\xd8\xff\xe0" + b"FAKEJPEG")
+
+    controller._session_storage = type("S", (), {"strip_path": fake_strip})()
+
+    status = controller.get_status()
+    assert "most_recent_strip_url" in status
+    assert status["most_recent_strip_url"].startswith("/sessions/")
+    assert status["most_recent_strip_url"].endswith("strip.jpg")
+
+
+class _ExplodingStorage:
+    @property
+    def strip_path(self) -> Path:
+        raise RuntimeError("boom")
+
+
+def test_get_status_swallows_exception_when_strip_path_access_fails(tmp_path):
+    controller = PhotoboothController(camera=FakeCamera(tmp_path), image_root=tmp_path)
+    controller._session_storage = _ExplodingStorage()
+
+    status = controller.get_status()
+
+    # Should still return base status keys
+    assert status["state"] in {"IDLE", "READY_FOR_PHOTO", "COUNTDOWN", "CAPTURING_PHOTO", "PROCESSING", "PRINTING"}
+    assert "busy" in status
+    assert "photos_taken" in status
+    assert "total_photos" in status
+    assert "countdown_remaining" in status
+
+    # Exception path should prevent adding the derived URL
+    assert "most_recent_strip_url" not in status

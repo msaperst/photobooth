@@ -1,5 +1,6 @@
 import { getButtonLabel } from "./ui_logic.js";
 import { getConnectionHealth } from "./ui_state.js";
+import { computeRecentStripUpdate } from "./ui_strip.js";
 
 const isBrowser = typeof window !== "undefined";
 
@@ -77,36 +78,36 @@ function updateMostRecentStrip(status) {
     const section = document.getElementById("recentStripSection");
     if (!section) return;
 
-    const url = status.most_recent_strip_url || null;
-    if (!url) {
-        section.classList.add("hidden");
-        lastMostRecentStripUrl = null;
-        return;
-    }
-
     const stripImg = document.getElementById("recentStripImage");
     const qrImg = document.getElementById("recentStripQr");
 
-    if (url !== lastMostRecentStripUrl) {
-        const cacheBuster = `v=${Date.now()}`;
-        stripImg.src = `${url}?${cacheBuster}`;
-        qrImg.src = `/qr/most-recent-strip.png?${cacheBuster}`;
-        lastMostRecentStripUrl = url;
+    const out = computeRecentStripUpdate({
+        status,
+        lastMostRecentStripUrl,
+        lastBusy,
+        shouldAutoScrollToStrip,
+        nowMs: Date.now(),
+    });
 
-        // Flag scroll ONLY when a new strip appears
-        shouldAutoScrollToStrip = true;
+    // visibility
+    if (!out.show) {
+        section.classList.add("hidden");
+    } else {
+        section.classList.remove("hidden");
     }
 
-    section.classList.remove("hidden");
+    // update sources only when provided (URL changed)
+    if (out.stripSrc) stripImg.src = out.stripSrc;
+    if (out.qrSrc) qrImg.src = out.qrSrc;
 
-    // Perform scroll exactly once after session completes
-    if (shouldAutoScrollToStrip && lastBusy && !status.busy) {
-        section.scrollIntoView({
-            behavior: "smooth",
-            block: "start"
-        });
-        shouldAutoScrollToStrip = false;
+    // scroll if requested
+    if (out.shouldScroll) {
+        section.scrollIntoView({ behavior: "smooth", block: "start" });
     }
+
+    // persist state
+    lastMostRecentStripUrl = out.nextLastMostRecentStripUrl;
+    shouldAutoScrollToStrip = out.nextShouldAutoScrollToStrip;
 }
 
 /* ---------- API ---------- */
