@@ -7,7 +7,25 @@ const isBrowser = typeof window !== "undefined";
 /* ---------- Connection State ---------- */
 
 let serverReachable = true;
-let clickLock = null;
+
+
+/* ---------- Local click latch ---------- */
+
+// Prevent double-taps: once clicked, keep disabled until the backend state
+// shows progress (busy or no longer in a clickable state).
+let takeActionPending = false;
+let takeActionPendingSinceMs = 0;
+
+function markActionPending() {
+    takeActionPending = true;
+    takeActionPendingSinceMs = Date.now();
+}
+
+function clearActionPending() {
+    takeActionPending = false;
+    takeActionPendingSinceMs = 0;
+}
+
 
 /* ---------- UI Helpers ---------- */
 
@@ -19,7 +37,8 @@ function updateButton(status) {
         status.state === "IDLE" ||
         status.state === "READY_FOR_PHOTO";
 
-    button.disabled = !!clickLock || !statusAllowsClick;
+    // If we just clicked, keep disabled until poll sees backend progress.
+    button.disabled = takeActionPending || !statusAllowsClick;
 }
 
 function syncConnectionOverlay() {
@@ -135,28 +154,25 @@ async function fetchHealth() {
 
 async function handleButtonClick() {
     if (!serverReachable) return;
-    if (clickLock) return;
+    if (takeActionPending) return; // ignore double-taps
 
+    // Disable immediately, don't wait for the next poll tick.
+    markActionPending();
     const button = document.getElementById("startButton");
-    button.disabled = true; // immediate UX response
+    button.disabled = true;
 
-    let initialStatus;
+    let status;
     try {
-        initialStatus = await fetchStatus();
-    } catch (e) {
-        // If we can't even fetch status, don't lock the UI.
+        status = await fetchStatus();
+    } catch (err) {
+        // If we can't even read status, let operator retry.
+        clearActionPending();
         button.disabled = false;
-        throw e;
+        throw err;
     }
 
-    clickLock = {
-        fromState: initialStatus.state,
-        requestDone: false,
-        startedAtMs: Date.now(),
-    };
-
     try {
-        if (initialStatus.state === "IDLE") {
+        if (status.state === "IDLE") {
             await fetch("/start-session", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -167,16 +183,17 @@ async function handleButtonClick() {
             });
 
             await fetch("/take-photo", { method: "POST" });
-        } else if (initialStatus.state === "READY_FOR_PHOTO") {
+            return;
+        }
+
+        if (status.state === "READY_FOR_PHOTO") {
             await fetch("/take-photo", { method: "POST" });
         }
 
-        // Mark that the network round-trip completed.
-        clickLock.requestDone = true;
-
+        // Don’t clear here. We clear when poll sees backend progress.
     } catch (err) {
-        // On request failure, unlock immediately so operator can retry.
-        clickLock = null;
+        // Request failed; allow retry immediately.
+        clearActionPending();
         button.disabled = false;
         throw err;
     }
@@ -191,24 +208,23 @@ async function poll() {
             fetchHealth()
         ]);
 
+if (takeActionPending) {
+    const statusAllowsClick =
+        status.state === "IDLE" ||
+        status.state === "READY_FOR_PHOTO";
+
+    // Progress means: controller is now busy OR moved out of a clickable state.
+    if (status.busy || !statusAllowsClick) {
+        clearActionPending();
+    } else if (Date.now() - takeActionPendingSinceMs > 10_000) {
+        // Failsafe: don't lock forever if something gets stuck.
+        clearActionPending();
+    }
+}
+
         if (!serverReachable) {
             serverReachable = true;
             syncConnectionOverlay();
-        }
-
-        if (clickLock) {
-            const elapsedMs = Date.now() - clickLock.startedAtMs;
-
-            // Only unlock once the request finished AND we observe backend progress.
-            // Progress = state changed away from the state we clicked from OR busy turned true.
-            if (clickLock.requestDone && (status.busy || status.state !== clickLock.fromState)) {
-                clickLock = null;
-            }
-
-            // Failsafe: if backend never progresses, unlock after 10s.
-            if (elapsedMs > 10_000) {
-                clickLock = null;
-            }
         }
 
         updateButton(status);
@@ -219,6 +235,7 @@ async function poll() {
         if (lastBusy && !status.busy) {
             setStripSelection(2);
         }
+
         lastBusy = status.busy;
 
     } catch (err) {
@@ -228,7 +245,6 @@ async function poll() {
         }
     }
 }
-
 
 /* ---------- Init ---------- */
 
