@@ -225,8 +225,10 @@ class PhotoboothController:
     # ---------- Health helpers ----------
 
     def _poll_camera_health_if_idle(self) -> None:
-        if self.state != ControllerState.IDLE:
-            return
+        if self.state not in (
+                ControllerState.IDLE,
+                ControllerState.READY_FOR_PHOTO,
+        ):            return
 
         try:
             if self.camera.health_check():
