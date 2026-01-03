@@ -7,7 +7,7 @@ const isBrowser = typeof window !== "undefined";
 /* ---------- Connection State ---------- */
 
 let serverReachable = true;
-let actionInFlight = false;
+let clickLock = null;
 
 /* ---------- UI Helpers ---------- */
 
@@ -19,8 +19,7 @@ function updateButton(status) {
         status.state === "IDLE" ||
         status.state === "READY_FOR_PHOTO";
 
-    // Disable immediately after click until we observe a state/busy change.
-    button.disabled = actionInFlight || !statusAllowsClick;
+    button.disabled = !!clickLock || !statusAllowsClick;
 }
 
 function syncConnectionOverlay() {
@@ -136,17 +135,28 @@ async function fetchHealth() {
 
 async function handleButtonClick() {
     if (!serverReachable) return;
-
-    if (actionInFlight) return;
-    actionInFlight = true;
+    if (clickLock) return;
 
     const button = document.getElementById("startButton");
-    button.disabled = true;
+    button.disabled = true; // immediate UX response
+
+    let initialStatus;
+    try {
+        initialStatus = await fetchStatus();
+    } catch (e) {
+        // If we can't even fetch status, don't lock the UI.
+        button.disabled = false;
+        throw e;
+    }
+
+    clickLock = {
+        fromState: initialStatus.state,
+        requestDone: false,
+        startedAtMs: Date.now(),
+    };
 
     try {
-        const status = await fetchStatus();
-
-        if (status.state === "IDLE") {
+        if (initialStatus.state === "IDLE") {
             await fetch("/start-session", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -157,17 +167,17 @@ async function handleButtonClick() {
             });
 
             await fetch("/take-photo", { method: "POST" });
-            return;
-        }
-
-        if (status.state === "READY_FOR_PHOTO") {
+        } else if (initialStatus.state === "READY_FOR_PHOTO") {
             await fetch("/take-photo", { method: "POST" });
         }
+
+        // Mark that the network round-trip completed.
+        clickLock.requestDone = true;
+
     } catch (err) {
-        actionInFlight = false;
-        if (serverReachable) {
-            button.disabled = false;
-        }
+        // On request failure, unlock immediately so operator can retry.
+        clickLock = null;
+        button.disabled = false;
         throw err;
     }
 }
@@ -186,12 +196,18 @@ async function poll() {
             syncConnectionOverlay();
         }
 
-        if (actionInFlight) {
-            const statusAllowsClick =
-                status.state === "IDLE" ||
-                status.state === "READY_FOR_PHOTO";
-            if (status.busy || !statusAllowsClick) {
-                actionInFlight = false;
+        if (clickLock) {
+            const elapsedMs = Date.now() - clickLock.startedAtMs;
+
+            // Only unlock once the request finished AND we observe backend progress.
+            // Progress = state changed away from the state we clicked from OR busy turned true.
+            if (clickLock.requestDone && (status.busy || status.state !== clickLock.fromState)) {
+                clickLock = null;
+            }
+
+            // Failsafe: if backend never progresses, unlock after 10s.
+            if (elapsedMs > 10_000) {
+                clickLock = null;
             }
         }
 
@@ -203,7 +219,6 @@ async function poll() {
         if (lastBusy && !status.busy) {
             setStripSelection(2);
         }
-
         lastBusy = status.busy;
 
     } catch (err) {
