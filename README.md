@@ -10,6 +10,9 @@ This repository contains **Photobooth v2**, an event‑grade, unattended‑capab
 The system is designed to be **offline‑capable**, **reproducible from scratch**, and **robust under real event
 conditions**.
 
+> An important note about
+> [powering the Raspberry Pi](docs/raspberry_pi_power_requirements.md)
+
 ---
 
 ## Design Goals
