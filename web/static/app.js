@@ -68,6 +68,35 @@ function updateHealthOverlay(health) {
     overlay.classList.remove("hidden");
 }
 
+/* -------Last Strip ------- */
+let lastMostRecentStripUrl = null;
+
+function updateMostRecentStrip(status) {
+    const section = document.getElementById("recentStripSection");
+    if (!section) return;
+
+    const url = status.most_recent_strip_url || null;
+    if (!url) {
+        section.classList.add("hidden");
+        lastMostRecentStripUrl = null;
+        return;
+    }
+
+    const stripImg = document.getElementById("recentStripImage");
+    const qrImg = document.getElementById("recentStripQr");
+
+    // Only update the image src when the URL changes; bust cache so a finished
+    // session shows immediately.
+    if (url !== lastMostRecentStripUrl) {
+        const cacheBuster = `v=${Date.now()}`;
+        stripImg.src = `${url}?${cacheBuster}`;
+        qrImg.src = `/qr/most-recent-strip.png?${cacheBuster}`;
+        lastMostRecentStripUrl = url;
+    }
+
+    section.classList.remove("hidden");
+}
+
 /* ---------- API ---------- */
 
 async function fetchJson(url) {
@@ -128,6 +157,7 @@ async function poll() {
 
         updateButton(status);
         enableStripSelection(!status.busy);
+        updateMostRecentStrip(status);
         updateHealthOverlay(health);
 
         if (lastBusy && !status.busy) {

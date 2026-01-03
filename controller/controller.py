@@ -141,13 +141,24 @@ class PhotoboothController:
 
     def get_status(self):
         with self._state_lock:
-            return {
+            storage = self._session_storage
+            status = {
                 "state": self.state.name,
                 "busy": self.state != ControllerState.IDLE,
                 "photos_taken": self.photos_taken,
                 "total_photos": self.total_photos,
                 "countdown_remaining": self.countdown_remaining,
             }
+        if storage is not None:
+            try:
+                strip_path = storage.strip_path
+                if strip_path.exists() and strip_path.is_file():
+                    rel = strip_path.relative_to(self.sessions_root)
+                    status["most_recent_strip_url"] = f"/sessions/{rel.as_posix()}"
+            except Exception:
+                pass
+
+        return status
 
     def get_health(self) -> HealthStatus:
         with self._health_lock:

@@ -36,6 +36,34 @@
     Start Session
 </button>
 
+<section id="recentStripSection" class="recent-strip hidden" aria-live="polite">
+    <h2 class="recent-strip-title">Most Recent Photo Strip</h2>
+
+    <div class="recent-strip-content">
+        <div class="recent-strip-preview">
+            <img
+                    id="recentStripImage"
+                    alt="Most recent photo strip"
+                    loading="lazy"
+            />
+        </div>
+
+        <div class="recent-strip-download">
+            <p class="recent-strip-copy">
+                Want this on your phone? Join Wi-Fi <strong>Photobooth</strong>, then scan to download.
+            </p>
+            <img
+                    id="recentStripQr"
+                    alt="QR code to download the most recent strip"
+                    loading="lazy"
+            />
+            <p class="recent-strip-hint">
+                If it doesn’t start automatically, your camera app will show a link.
+            </p>
+        </div>
+    </div>
+</section>
+
 <div id="healthOverlay" class="health-overlay hidden">
     <div class="health-content">
         <h1 id="healthMessage"></h1>

@@ -15,6 +15,10 @@ body {
     padding: 2rem;
 }
 
+.hidden {
+    display: none;
+}
+
 img.logo {
     max-width: 260px;
     margin-bottom: 2rem;
@@ -97,23 +101,6 @@ button:disabled {
     cursor: not-allowed;
 }
 
-/* Live View */
-
-.live-view {
-    display: flex;
-    justify-content: center;
-    margin-bottom: 2rem;
-}
-
-#liveView {
-    width: 100%;
-    max-width: 720px;
-    aspect-ratio: 3 / 2;
-    background-color: #000;
-    border-radius: 12px;
-    object-fit: cover;
-}
-
 /* Error messages */
 
 .health-overlay {
@@ -159,4 +146,66 @@ body.health-error * {
 
 body.health-error .health-overlay {
     pointer-events: all;
+}
+
+/* Recent Strip */
+.recent-strip {
+    margin: 2.5rem auto 0;
+    max-width: 900px;
+    background: white;
+    border-radius: 16px;
+    padding: 1.5rem;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+}
+
+.recent-strip-title {
+    margin: 0 0 1rem;
+    color: var(--brand-purple);
+    font-size: 1.6rem;
+}
+
+.recent-strip-content {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.recent-strip-preview {
+    flex: 0 1 280px;
+}
+
+#recentStripImage {
+    width: 100%;
+    height: auto;
+    max-height: 560px;
+    border-radius: 12px;
+    background: #f0f0f0;
+    object-fit: contain;
+}
+
+.recent-strip-download {
+    flex: 1 1 320px;
+    max-width: 380px;
+    text-align: center;
+}
+
+.recent-strip-copy {
+    margin: 0 0 1rem;
+    font-size: 1.05rem;
+    line-height: 1.4;
+}
+
+#recentStripQr {
+    width: 220px;
+    height: 220px;
+    border-radius: 12px;
+    background: white;
+}
+
+.recent-strip-hint {
+    margin: 0.75rem 0 0;
+    opacity: 0.8;
+    font-size: 0.95rem;
 }
