@@ -5,4 +5,3 @@ pillow
 qrcode
 gunicorn
 zipp>=3.19.1 # not directly required, pinned by Snyk to avoid a vulnerability
-this_is_not_a_real_package_123==1.0.0

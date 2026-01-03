@@ -193,5 +193,3 @@ If the service is running, stop it first:
 ```bash
 sudo systemctl stop photobooth
 ```
-
-SOME GARBAGE STUFF
