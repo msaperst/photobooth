@@ -69,7 +69,9 @@ function updateHealthOverlay(health) {
 }
 
 /* -------Last Strip ------- */
+
 let lastMostRecentStripUrl = null;
+let shouldAutoScrollToStrip = false;
 
 function updateMostRecentStrip(status) {
     const section = document.getElementById("recentStripSection");
@@ -85,16 +87,26 @@ function updateMostRecentStrip(status) {
     const stripImg = document.getElementById("recentStripImage");
     const qrImg = document.getElementById("recentStripQr");
 
-    // Only update the image src when the URL changes; bust cache so a finished
-    // session shows immediately.
     if (url !== lastMostRecentStripUrl) {
         const cacheBuster = `v=${Date.now()}`;
         stripImg.src = `${url}?${cacheBuster}`;
         qrImg.src = `/qr/most-recent-strip.png?${cacheBuster}`;
         lastMostRecentStripUrl = url;
+
+        // Flag scroll ONLY when a new strip appears
+        shouldAutoScrollToStrip = true;
     }
 
     section.classList.remove("hidden");
+
+    // Perform scroll exactly once after session completes
+    if (shouldAutoScrollToStrip && lastBusy && !status.busy) {
+        section.scrollIntoView({
+            behavior: "smooth",
+            block: "start"
+        });
+        shouldAutoScrollToStrip = false;
+    }
 }
 
 /* ---------- API ---------- */
