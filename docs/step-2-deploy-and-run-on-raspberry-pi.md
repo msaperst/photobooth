@@ -64,8 +64,10 @@ git pull
 > and is invoked by systemd.**_
 > - This script is designed to be safe at boot:
     >
+
 - If Ethernet is not available, it exits without blocking startup.
->   - If dependencies cannot be updated (requirements changed and pip install fails), it keeps the old code checked out.
+
+> - If dependencies cannot be updated (requirements changed and pip install fails), it keeps the old code checked out.
 > - This feature requires the systemd unit to include: `ExecStartPre=-/opt/photobooth/deployment/update_repo.sh`
 
 ---
@@ -191,3 +193,5 @@ If the service is running, stop it first:
 ```bash
 sudo systemctl stop photobooth
 ```
+
+SOME GARBAGE STUFF
