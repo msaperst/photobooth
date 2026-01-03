@@ -1,0 +1,29 @@
+[Unit]
+Description=Photobooth Flask app (gunicorn)
+After=network.target
+
+[Service]
+Type=simple
+
+# Run as dedicated user/group (created during setup)
+User=photobooth
+Group=photobooth
+
+# Where the repo is deployed
+WorkingDirectory=/opt/photobooth
+
+# Load deployment/event configuration
+EnvironmentFile=/etc/photobooth.env
+
+# Gunicorn (single worker to preserve single controller ownership)
+ExecStart=/opt/photobooth/venv/bin/python -m gunicorn -w 1 -b 0.0.0.0:5000 web.wsgi:app
+
+Restart=on-failure
+RestartSec=2
+
+# Send logs to journald
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

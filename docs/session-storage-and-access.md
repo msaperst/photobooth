@@ -42,3 +42,8 @@ Live preview images are never stored on disk.
 - The `/sessions/*` route is intended for **local, trusted networks only** (e.g. the Pi’s hotspot).
 - No authentication is currently enforced.
 - This is acceptable for MVP and local event usage, but should be revisited before any internet-facing exposure.
+
+
+## Deployment note
+
+In production, `image_root` is configured via the PHOTOBOOTH_IMAGE_ROOT environment variable (loaded from /etc/photobooth.env by systemd).

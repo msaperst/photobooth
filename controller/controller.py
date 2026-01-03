@@ -67,7 +67,8 @@ class PhotoboothController:
     # How many photos are taken to build out the strip.
     TOTAL_PHOTOS_PER_SESSION = 3
 
-    def __init__(self, camera: Camera, printer: Printer, image_root: Path):
+    def __init__(self, camera: Camera, printer: Printer, image_root: Path, *, strip_logo_path: Path | None = None,
+                 event_album_code: str | None = None):
         self._state_lock = threading.Lock()
 
         # Session state
@@ -86,10 +87,10 @@ class PhotoboothController:
         self.sessions_root.mkdir(parents=True, exist_ok=True)
         self._session_storage = None
         self._captured_image_paths = []
-        # Default logo used for strip/print rendering. Keep this as a single constant
-        # so it's easy to relocate/rename without chasing references.
-        self.strip_logo_path = Path(__file__).resolve().parents[1] / "imaging" / "logo.png"
-        self.event_album_code = "MaxMitzvah2026"
+        # Event-level configuration (injected by web/app.py from env in deployment).
+        default_logo = Path(__file__).resolve().parents[1] / "imaging" / "logo.png"
+        self.strip_logo_path = strip_logo_path or default_logo
+        self.event_album_code = event_album_code or "Sample Code"
 
         # Printer
         self.printer = printer
@@ -128,6 +129,28 @@ class PhotoboothController:
             )
 
         self._thread.start()
+
+    # ---------- Deployment / config helpers ----------
+
+    def set_config_error(self, *, message: str, instructions: list[str]) -> None:
+        """Mark the controller unhealthy due to deployment configuration issues.
+
+        This is intended to be called once at startup by the web app when required
+        deployment configuration is missing/invalid. The service should still start
+        so that /healthz can surface actionable errors on a headless Pi.
+        """
+        with self._health_lock:
+            # Do not overwrite an existing error; config errors are "first cause".
+            if self._health_status.level == HealthLevel.ERROR:
+                return
+
+            self._health_source = HealthSource.CONFIG
+            self._health_status = HealthStatus.error(
+                code=HealthCode.CONFIG_INVALID,
+                message=message,
+                instructions=instructions,
+                recoverable=True,
+            )
 
     def stop(self):
         self._running = False
@@ -325,6 +348,10 @@ class PhotoboothController:
 
     def _mark_camera_ok(self):
         with self._health_lock:
+            # Never clear deployment/config errors from camera polling.
+            if self._health_source == HealthSource.CONFIG:
+                return
+
             self._health_source = None
             self._health_status = HealthStatus.ok()
 

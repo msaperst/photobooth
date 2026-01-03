@@ -1,4 +1,39 @@
+> **Automation available**
+>
+> All steps in this document can be performed automatically using:
+> `deployment/scripts/step1_provision_pi.sh`
+>
+> The script encodes the steps below exactly. Manual execution is still documented for clarity and debugging.
+
 # Step 1: Configure The Raspberry Pi
+
+---
+
+## 1.0 Create a dedicated photobooth user
+
+Run the service as a dedicated non-root user.
+
+```bash
+sudo adduser photobooth
+```
+
+Add the photobooth user to the groups needed for USB camera access (and later, printing):
+
+```bash
+sudo usermod -aG plugdev,video,dialout photobooth
+```
+
+Reboot to ensure group membership and udev rules apply cleanly:
+
+```bash
+sudo reboot
+```
+
+After reboot, confirm:
+
+```bash
+groups photobooth
+```
 
 ---
 
@@ -211,6 +246,93 @@ If this works → 🎉 camera integration at OS level is DONE
 rm test_*.jpg
 ```
 
-# TODO
+---
 
-- configure system to be wifi hotspot
+## 1.9 Configure Raspberry Pi as Wi‑Fi Access Point (AP)
+
+This configures the Pi to broadcast an **open (password‑free)** Wi‑Fi network for guests and the iPad to connect to at
+events.
+
+Design:
+
+- Wi‑Fi (`wlan0`) runs as an AP only
+- Ethernet (`eth0`) remains the management interface (SSH during setup)
+- SSID: `Photobooth`
+- Security: open (no password)
+- Subnet: `192.168.4.0/24`
+- Pi IP (gateway): `192.168.4.1`
+- Photobooth web UI will be reachable at: `http://192.168.4.1:5000`
+
+Safety:
+
+- **Do not run these steps over Wi‑Fi.** You will disconnect `wlan0` from client mode.
+- Ensure you are connected via **Ethernet** (recommended) or have local console access.
+
+### 1.9.1 Verify current network state
+
+```bash
+nmcli device status
+```
+
+Expected during setup:
+
+- `eth0` is **connected**
+- `wlan0` is currently connected to your home Wi‑Fi (client mode) OR disconnected
+
+### 1.9.2 Install required package
+
+```bash
+sudo apt update
+sudo apt install -y hostapd
+```
+
+### 1.9.3 Ensure standalone dnsmasq is NOT installed (critical)
+
+```bash
+sudo systemctl stop dnsmasq || true
+sudo systemctl disable dnsmasq || true
+sudo apt purge -y dnsmasq
+```
+
+### 1.9.4 Create the AP connection (NetworkManager)
+
+```bash
+sudo nmcli connection add   type wifi   ifname wlan0   con-name photobooth-ap   autoconnect yes   ssid Photobooth
+```
+
+### 1.9.5 Configure AP mode + DHCP + static AP IP
+
+```bash
+sudo nmcli connection modify photobooth-ap 802-11-wireless.mode ap
+sudo nmcli connection modify photobooth-ap 802-11-wireless.band bg
+sudo nmcli connection modify photobooth-ap ipv4.method shared
+sudo nmcli connection modify photobooth-ap ipv4.addresses 192.168.4.1/24
+```
+
+### 1.9.6 Bring the AP up
+
+```bash
+sudo nmcli connection up photobooth-ap
+```
+
+Verify:
+
+```bash
+ip addr show wlan0
+```
+
+### 1.9.7 Verify from a client
+
+- Connect to Wi‑Fi network: `Photobooth`
+- Open: `http://192.168.4.1:5000`
+- Optional SSH:
+
+```bash
+ssh photobooth@192.168.4.1
+```
+
+### 1.9.8 Reboot persistence test
+
+```bash
+sudo reboot
+```

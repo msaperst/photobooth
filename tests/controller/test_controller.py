@@ -841,3 +841,27 @@ def test_poll_printer_health_returns_cleanly_when_preflight_raises(tmp_path, mon
     health = controller.get_health()
     assert health.level == HealthLevel.ERROR
     assert health.code == HealthCode.PRINTER_FAILED
+
+
+def test_set_config_error_does_not_overwrite_existing_error(tmp_path):
+    """Cover the early-return branch in set_config_error when health is already ERROR."""
+    camera = FakeCamera(tmp_path)
+    camera.connected = False  # start() will mark capture error
+    controller = PhotoboothController(camera, tmp_path)
+    controller.start()
+
+    # Sanity: controller is unhealthy due to camera.
+    assert controller.get_health().level == HealthLevel.ERROR
+    assert controller.get_health().code == HealthCode.CAMERA_NOT_DETECTED
+    assert controller._get_health_source() == HealthSource.CAPTURE
+
+    # Act: attempt to set config error; should not overwrite first-cause error.
+    controller.set_config_error(
+        message="config broken",
+        instructions=["fix it"],
+    )
+
+    # Assert: still the original capture error.
+    assert controller.get_health().level == HealthLevel.ERROR
+    assert controller.get_health().code == HealthCode.CAMERA_NOT_DETECTED
+    assert controller._get_health_source() == HealthSource.CAPTURE
