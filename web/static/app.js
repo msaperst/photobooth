@@ -7,16 +7,20 @@ const isBrowser = typeof window !== "undefined";
 /* ---------- Connection State ---------- */
 
 let serverReachable = true;
+let actionInFlight = false;
 
 /* ---------- UI Helpers ---------- */
 
 function updateButton(status) {
     const button = document.getElementById("startButton");
     button.innerText = getButtonLabel(status);
-    button.disabled = !(
+
+    const statusAllowsClick =
         status.state === "IDLE" ||
-        status.state === "READY_FOR_PHOTO"
-    );
+        status.state === "READY_FOR_PHOTO";
+
+    // Disable immediately after click until we observe a state/busy change.
+    button.disabled = actionInFlight || !statusAllowsClick;
 }
 
 function syncConnectionOverlay() {
@@ -133,24 +137,38 @@ async function fetchHealth() {
 async function handleButtonClick() {
     if (!serverReachable) return;
 
-    const status = await fetchStatus();
+    if (actionInFlight) return;
+    actionInFlight = true;
 
-    if (status.state === "IDLE") {
-        await fetch("/start-session", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                print_count: selectedStrips / 2,
-                image_count: 3
-            })
-        });
+    const button = document.getElementById("startButton");
+    button.disabled = true;
 
-        await fetch("/take-photo", { method: "POST" });
-        return;
-    }
+    try {
+        const status = await fetchStatus();
 
-    if (status.state === "READY_FOR_PHOTO") {
-        await fetch("/take-photo", { method: "POST" });
+        if (status.state === "IDLE") {
+            await fetch("/start-session", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    print_count: selectedStrips / 2,
+                    image_count: 3
+                })
+            });
+
+            await fetch("/take-photo", { method: "POST" });
+            return;
+        }
+
+        if (status.state === "READY_FOR_PHOTO") {
+            await fetch("/take-photo", { method: "POST" });
+        }
+    } catch (err) {
+        actionInFlight = false;
+        if (serverReachable) {
+            button.disabled = false;
+        }
+        throw err;
     }
 }
 
@@ -166,6 +184,15 @@ async function poll() {
         if (!serverReachable) {
             serverReachable = true;
             syncConnectionOverlay();
+        }
+
+        if (actionInFlight) {
+            const statusAllowsClick =
+                status.state === "IDLE" ||
+                status.state === "READY_FOR_PHOTO";
+            if (status.busy || !statusAllowsClick) {
+                actionInFlight = false;
+            }
         }
 
         updateButton(status);
@@ -186,6 +213,7 @@ async function poll() {
         }
     }
 }
+
 
 /* ---------- Init ---------- */
 
