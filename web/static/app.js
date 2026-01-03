@@ -1,5 +1,6 @@
 import { getButtonLabel } from "./ui_logic.js";
 import { getConnectionHealth } from "./ui_state.js";
+import { computeRecentStripUpdate } from "./ui_strip.js";
 
 const isBrowser = typeof window !== "undefined";
 
@@ -68,6 +69,47 @@ function updateHealthOverlay(health) {
     overlay.classList.remove("hidden");
 }
 
+/* -------Last Strip ------- */
+
+let lastMostRecentStripUrl = null;
+let shouldAutoScrollToStrip = false;
+
+function updateMostRecentStrip(status) {
+    const section = document.getElementById("recentStripSection");
+    if (!section) return;
+
+    const stripImg = document.getElementById("recentStripImage");
+    const qrImg = document.getElementById("recentStripQr");
+
+    const out = computeRecentStripUpdate({
+        status,
+        lastMostRecentStripUrl,
+        lastBusy,
+        shouldAutoScrollToStrip,
+        nowMs: Date.now(),
+    });
+
+    // visibility
+    if (!out.show) {
+        section.classList.add("hidden");
+    } else {
+        section.classList.remove("hidden");
+    }
+
+    // update sources only when provided (URL changed)
+    if (out.stripSrc) stripImg.src = out.stripSrc;
+    if (out.qrSrc) qrImg.src = out.qrSrc;
+
+    // scroll if requested
+    if (out.shouldScroll) {
+        section.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    // persist state
+    lastMostRecentStripUrl = out.nextLastMostRecentStripUrl;
+    shouldAutoScrollToStrip = out.nextShouldAutoScrollToStrip;
+}
+
 /* ---------- API ---------- */
 
 async function fetchJson(url) {
@@ -128,6 +170,7 @@ async function poll() {
 
         updateButton(status);
         enableStripSelection(!status.busy);
+        updateMostRecentStrip(status);
         updateHealthOverlay(health);
 
         if (lastBusy && !status.busy) {
