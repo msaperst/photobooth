@@ -23,6 +23,7 @@ ExecStart=/opt/photobooth/venv/bin/python -m gunicorn -w 1 -b 0.0.0.0:5000 web.w
 Restart=on-failure
 RestartSec=2
 
+# Send logs to journald
 StandardOutput=journal
 StandardError=journal
 
