@@ -4,6 +4,7 @@
     --brand-purple: #6B5B95;
     --brand-bg: #F6F8F7;
     --brand-text: #2E2E2E;
+    --brand-purple-dark: #4E4370;
 }
 
 body {
@@ -63,10 +64,13 @@ button:disabled {
 .strip-options {
     display: flex;
     justify-content: center;
+    flex-wrap: wrap;
     gap: 1rem;
 }
 
 .strip-option {
+    flex: 1 1 140px;
+    max-width: 220px;
     font-size: 1.3rem;
     padding: 1rem 1.5rem;
     border-radius: 10px;
@@ -75,6 +79,12 @@ button:disabled {
     color: var(--brand-purple);
     cursor: pointer;
     min-width: 120px;
+    box-shadow: 0 4px 0 var(--brand-purple-dark);
+}
+
+.strip-option:active {
+    transform: translateY(4px);
+    box-shadow: 0 2px 0 var(--brand-purple-dark);
 }
 
 .strip-option.active {
