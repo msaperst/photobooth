@@ -433,7 +433,7 @@ def test_poll_camera_health_noop_when_not_idle(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
     controller = PhotoboothController(camera, tmp_path)
 
-    controller.state = ControllerState.READY_FOR_PHOTO
+    controller.state = ControllerState.CAPTURING_PHOTO
 
     called = {"n": 0}
     monkeypatch.setattr(camera, "health_check", lambda: called.__setitem__("n", 1))
