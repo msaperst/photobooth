@@ -470,6 +470,12 @@ def test_poll_camera_health_sets_error_on_exception(tmp_path, monkeypatch):
 
     monkeypatch.setattr(camera, "health_check", lambda: (_ for _ in ()).throw(RuntimeError()))
 
+    t0 = 2000.0
+    monkeypatch.setattr("controller.controller.time.time", lambda: t0)
+    controller._poll_camera_health_if_idle()
+    assert controller.get_health().level == HealthLevel.OK
+
+    monkeypatch.setattr("controller.controller.time.time", lambda: t0 + controller.CAMERA_ERROR_AFTER + 0.1)
     controller._poll_camera_health_if_idle()
 
     health = controller.get_health()
@@ -494,20 +500,45 @@ def test_set_processing_error_does_not_override_existing_error(tmp_path):
     assert health.message == "Camera failed"
 
 
+
+def test_poll_camera_health_does_not_flash_error_on_transient_failure(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera, tmp_path)
+    controller.state = ControllerState.READY_FOR_PHOTO
+
+    # Transient failure (e.g., gphoto2 slowness) should not immediately surface an error.
+    monkeypatch.setattr(camera, "health_check", lambda: False)
+
+    t0 = 3000.0
+    monkeypatch.setattr("controller.controller.time.time", lambda: t0)
+    controller._poll_camera_health_if_idle()
+    assert controller.get_health().level == HealthLevel.OK
+
+    # Still within debounce window -> still OK
+    monkeypatch.setattr("controller.controller.time.time", lambda: t0 + (controller.CAMERA_ERROR_AFTER / 2.0))
+    controller._poll_camera_health_if_idle()
+    assert controller.get_health().level == HealthLevel.OK
+
 def test_poll_camera_health_sets_error_when_health_check_returns_false(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
     controller = PhotoboothController(camera, tmp_path)
 
-    # Must be IDLE for polling to occur
     controller.state = ControllerState.IDLE
 
     # Simulate camera responding but reporting unhealthy
     monkeypatch.setattr(camera, "health_check", lambda: False)
 
+    # Debounced: first failure should not immediately surface an error.
+    t0 = 1000.0
+    monkeypatch.setattr("controller.controller.time.time", lambda: t0)
+    controller._poll_camera_health_if_idle()
+    assert controller.get_health().level == HealthLevel.OK
+
+    # After sustained failure beyond threshold, error should surface.
+    monkeypatch.setattr("controller.controller.time.time", lambda: t0 + controller.CAMERA_ERROR_AFTER + 0.1)
     controller._poll_camera_health_if_idle()
 
     health = controller.get_health()
-
     assert health.level == HealthLevel.ERROR
     assert health.code == HealthCode.CAMERA_NOT_DETECTED
     assert controller._get_health_source() == HealthSource.CAPTURE
