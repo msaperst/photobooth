@@ -13,12 +13,14 @@ from controller.camera_base import Camera
 from controller.controller import PhotoboothController, Command, CommandType
 from controller.cups_printer import CupsPrinter
 from controller.gphoto_camera import GPhotoCamera
-from controller.printer_base import Printer
 from controller.health import HealthLevel
+from controller.printer_base import Printer
+
+DEFAULT_CUPS_PRINTER = "Canon_SELPHY_CP1500"
 
 
-DEFAULT_CUPS_PRINTER = "SELPHY_CP1500"
-def create_app(camera: Camera | None = None, printer: Printer | None = None, image_root: Path | None = None, *, album_code: str | None = None,
+def create_app(camera: Camera | None = None, printer: Printer | None = None, image_root: Path | None = None, *,
+               album_code: str | None = None,
                logo_path: Path | None = None):
     """Create the Flask app.
 

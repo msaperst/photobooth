@@ -232,14 +232,7 @@ Live view may be reintroduced **only if a future camera supports it cleanly and 
 
 ## Printing
 
-### Prototype Printer
-
-* Canon Selphy ES30
-* USB via CUPS
-
-### Production Target
-
-* Canon Selphy CP1300 or CP1500
+* Canon Selphy CP1500
 * Faster print times
 * Better driver support
 
@@ -249,6 +242,18 @@ and `print.jpg` (print-ready 1200×1800 @300 DPI).
 
 Strip/print sizing and responsibilities are defined in `docs/strip-vs-print-contract.md`.
 
+Photobooth v2 uses **driverless IPP Everywhere printing over Wi‑Fi**.
+
+### Why USB printing is unsupported
+
+USB printing on the Canon SELPHY CP1500 is intentionally not supported:
+
+- USB printer class drivers (`usblp`, `ipp-usb`) conflict on modern Linux
+- IPP‑over‑USB is unstable in AP‑mode deployments
+- Canon officially supports AirPrint / IPP Everywhere on this model
+- Wi‑Fi printing recovers cleanly after Pi or printer reboots
+
+For reliability and maintainability, all production printing uses Wi‑Fi IPP Everywhere.
 ---
 
 ## Networking
