@@ -1,3 +1,6 @@
+
+# Ensure repo is writable by the service user
+sudo chown -R photobooth:photobooth /opt/photobooth
 #!/usr/bin/env bash
 set -euo pipefail
 

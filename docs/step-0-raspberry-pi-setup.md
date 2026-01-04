@@ -164,3 +164,10 @@ You can now run:
     * CUPS printing
 * Containerization is intentionally avoided at this stage
 * Later steps will configure the Pi as a **Wi‑Fi access point** for offline events
+
+Desktop vs Lite (bloat / security):
+
+- For booth usage, Raspberry Pi OS Lite (64-bit) is usually sufficient and avoids installing browsers/media apps.
+- Avoid aggressively removing desktop packages on a running system unless you have a reason; it can introduce
+  instability.
+- Prefer: choose the right base image up front, then disable services we don't use.

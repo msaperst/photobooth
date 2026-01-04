@@ -37,6 +37,16 @@ Notes:
 
 ---
 
+
+Ownership note (/opt/photobooth):
+
+- If you cloned the repo earlier as a different user (e.g., `root`), Step 2 may fail when running as `photobooth`.
+- Fix by making `photobooth` the owner:
+
+```bash
+sudo chown -R photobooth:photobooth /opt/photobooth
+```
+
 ## 2.2 Deploy code from GitHub
 
 If /opt does not exist or is restricted, use /srv instead. These docs assume /opt/photobooth.

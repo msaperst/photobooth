@@ -340,3 +340,21 @@ ssh photobooth@192.168.4.1
 ```bash
 sudo reboot
 ```
+
+NOTE (printer drivers + testing):
+
+- `deployment/scripts/step1_provision_pi.sh` installs CUPS and `printer-driver-gutenprint` automatically.
+- After Step 1, you can validate printing using the commands below.
+
+Printer validation / smoke test:
+
+```bash
+lsusb | grep -i canon || true
+sudo lpinfo -v | grep -i -E "canon|selphy|cp1500" || true
+lpinfo -m | grep -i selphy || true
+lpstat -t
+
+# if the SELPHY queue exists, send a test print
+lp -d SELPHY_CP1500 -t "Photobooth test" /path/to/print.jpg
+lpstat -o
+```
