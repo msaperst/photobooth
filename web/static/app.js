@@ -38,7 +38,7 @@ function updateButton(status) {
         status.state === "READY_FOR_PHOTO";
 
     // If we just clicked, keep disabled until poll sees backend progress.
-    button.disabled = takeActionPending || !statusAllowsClick;
+    button.disabled = takeActionPending || status.busy || !statusAllowsClick;
 }
 
 function syncConnectionOverlay() {
