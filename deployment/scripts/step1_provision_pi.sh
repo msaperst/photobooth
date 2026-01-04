@@ -120,13 +120,23 @@ if ! command -v nmcli >/dev/null 2>&1; then
 fi
 
 # Recreate the AP connection deterministically (nmcli behavior varies by distro/version).
+# If you have made manual tweaks in production and don't want this script to overwrite them,
+# re-run with: PHOTOBOOTH_PRESERVE_AP=1
 if nmcli -t -f NAME connection show | grep -qx "photobooth-ap"; then
-  echo "==> Removing existing NetworkManager connection: photobooth-ap"
-  nmcli connection delete photobooth-ap
+  if [[ "${PHOTOBOOTH_PRESERVE_AP:-}" == "1" ]]; then
+    echo "==> Preserving existing NetworkManager connection: photobooth-ap (PHOTOBOOTH_PRESERVE_AP=1)"
+  else
+    echo "==> Removing existing NetworkManager connection: photobooth-ap"
+    nmcli connection delete photobooth-ap
+  fi
 fi
 
-echo "==> Creating NetworkManager AP connection: photobooth-ap"
-nmcli connection add type wifi ifname wlan0 con-name photobooth-ap autoconnect yes ssid Photobooth
+if ! nmcli -t -f NAME connection show | grep -qx "photobooth-ap"; then
+  echo "==> Creating NetworkManager AP connection: photobooth-ap"
+  nmcli connection add type wifi ifname wlan0 con-name photobooth-ap autoconnect yes ssid Photobooth
+else
+  echo "==> Using existing NetworkManager AP connection: photobooth-ap"
+fi
 
 echo "==> Configuring AP mode + shared IPv4"
 nmcli connection modify photobooth-ap 802-11-wireless.mode ap
@@ -174,19 +184,31 @@ if [[ "${PHOTOBOOTH_SKIP_PRINTER:-}" != "1" ]]; then
   done
 
   if ! lpinfo -v 2>/dev/null | grep -q 'dnssd://Canon%20SELPHY%20CP1500\._ipp\._tcp\.local/'; then
-    echo "ERROR: SELPHY not discovered via DNS-SD."
+    echo "WARNING: SELPHY not discovered via DNS-SD (yet)."
     echo "  - Confirm the printer is connected to the Photobooth SSID"
     echo "  - Power cycle the printer"
     echo "  - Run: avahi-browse -avtr | grep -i selphy"
-    exit 1
+    echo
+    if [[ "${PHOTOBOOTH_REQUIRE_PRINTER:-}" == "1" ]]; then
+      echo "ERROR: PHOTOBOOTH_REQUIRE_PRINTER=1 set; failing provisioning because printer is required."
+      exit 1
+    fi
+    echo "==> Skipping printer queue creation for now (re-run later once the printer is discoverable)."
+    echo "    Tip: re-run with PHOTOBOOTH_REQUIRE_PRINTER=1 once you expect it to be online."
+    echo "==> Done."
+    exit 0
   fi
 
-  echo "==> Creating CUPS queue: Canon_SELPHY_CP1500"
-  lpadmin \
-    -p Canon_SELPHY_CP1500 \
-    -E \
-    -v "dnssd://Canon%20SELPHY%20CP1500._ipp._tcp.local/" \
-    -m everywhere
+  if lpstat -p Canon_SELPHY_CP1500 >/dev/null 2>&1; then
+    echo "==> CUPS queue already exists: Canon_SELPHY_CP1500"
+  else
+    echo "==> Creating CUPS queue: Canon_SELPHY_CP1500"
+    lpadmin \
+      -p Canon_SELPHY_CP1500 \
+      -E \
+      -v "dnssd://Canon%20SELPHY%20CP1500._ipp._tcp.local/" \
+      -m everywhere
+  fi
   cupsenable Canon_SELPHY_CP1500
   cupsaccept Canon_SELPHY_CP1500
 
@@ -197,9 +219,15 @@ if [[ "${PHOTOBOOTH_SKIP_PRINTER:-}" != "1" ]]; then
     -o sides=one-sided
 
   echo "==> Quick queue sanity check (submits a HELD job then cancels; should NOT print)"
-  lp -d Canon_SELPHY_CP1500 -o job-hold-until=indefinite /etc/hosts >/dev/null
+  # Capture the job id so we only cancel what we just submitted.
+  JOB_ID=$(lp -d Canon_SELPHY_CP1500 -o job-hold-until=indefinite /etc/hosts 2>/dev/null | awk '{print $4}' | tr -d '()')
   lpstat -o || true
-  cancel -a Canon_SELPHY_CP1500 || true
+  if [[ -n "${JOB_ID:-}" ]]; then
+    cancel "${JOB_ID}" || true
+  else
+    # Fallback (should be rare): cancel everything on this queue.
+    cancel -a Canon_SELPHY_CP1500 || true
+  fi
   echo "==> Printer queue configured."
 fi
 
