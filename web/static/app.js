@@ -8,15 +8,39 @@ const isBrowser = typeof window !== "undefined";
 
 let serverReachable = true;
 
+
+/* ---------- Local click latch ---------- */
+
+// Disable the primary action button immediately on click to prevent double-taps.
+// Re-enable only after we observe a backend state transition (via polling) or on error.
+let actionPending = false;
+let actionPendingFromState = null;
+let actionPendingSinceMs = 0;
+
+function _markActionPending(fromState) {
+    actionPending = true;
+    actionPendingFromState = fromState;
+    actionPendingSinceMs = Date.now();
+}
+
+function _clearActionPending() {
+    actionPending = false;
+    actionPendingFromState = null;
+    actionPendingSinceMs = 0;
+}
 /* ---------- UI Helpers ---------- */
 
 function updateButton(status) {
     const button = document.getElementById("startButton");
     button.innerText = getButtonLabel(status);
-    button.disabled = !(
+
+    const statusAllowsClick =
         status.state === "IDLE" ||
-        status.state === "READY_FOR_PHOTO"
-    );
+        status.state === "READY_FOR_PHOTO";
+
+    // Keep disabled while we are waiting for the backend to transition state
+    // after a click (prevents double-taps during the polling window).
+    button.disabled = actionPending || !statusAllowsClick;
 }
 
 function syncConnectionOverlay() {
@@ -132,25 +156,46 @@ async function fetchHealth() {
 
 async function handleButtonClick() {
     if (!serverReachable) return;
+    if (actionPending) return;
 
-    const status = await fetchStatus();
+    // Disable immediately (don’t wait for the next poll tick).
+    const button = document.getElementById("startButton");
+    button.disabled = true;
 
-    if (status.state === "IDLE") {
-        await fetch("/start-session", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                print_count: selectedStrips / 2,
-                image_count: 3
-            })
-        });
-
-        await fetch("/take-photo", { method: "POST" });
-        return;
+    let status;
+    try {
+        status = await fetchStatus();
+    } catch (err) {
+        // Could not reach backend; let operator retry.
+        button.disabled = false;
+        throw err;
     }
 
-    if (status.state === "READY_FOR_PHOTO") {
-        await fetch("/take-photo", { method: "POST" });
+    _markActionPending(status.state);
+
+    try {
+        if (status.state === "IDLE") {
+            await fetch("/start-session", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    print_count: selectedStrips / 2,
+                    image_count: 3
+                })
+            });
+
+            await fetch("/take-photo", { method: "POST" });
+            return;
+        }
+
+        if (status.state === "READY_FOR_PHOTO") {
+            await fetch("/take-photo", { method: "POST" });
+        }
+    } catch (err) {
+        // Request failed; allow retry immediately.
+        _clearActionPending();
+        button.disabled = false;
+        throw err;
     }
 }
 
@@ -162,6 +207,21 @@ async function poll() {
             fetchStatus(),
             fetchHealth()
         ]);
+
+
+if (actionPending) {
+    // Clear the pending lock only once we observe the backend has moved on.
+    // We intentionally do NOT use `status.busy` here, because backend semantics may
+    // keep busy=true for long stretches (e.g., during an active session).
+    const stateChanged = actionPendingFromState !== null && status.state !== actionPendingFromState;
+
+    if (stateChanged) {
+        _clearActionPending();
+    } else if (Date.now() - actionPendingSinceMs > 10_000) {
+        // Failsafe: don’t lock forever if something gets stuck.
+        _clearActionPending();
+    }
+}
 
         if (!serverReachable) {
             serverReachable = true;
