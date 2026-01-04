@@ -1,5 +1,3 @@
-# Step 1: Configure The Raspberry Pi
-
 > **Automation available**
 >
 > All steps in this document can be performed automatically using:
@@ -10,6 +8,8 @@
 Prerequisite:
 
 - Clone the repo first (Step 0) so the scripts exist locally under `/opt/photobooth/deployment/scripts/`.
+
+# Step 1: Configure The Raspberry Pi
 
 ---
 
@@ -48,7 +48,13 @@ Install the basic dependencies
 ```bash
 sudo apt update
 sudo apt upgrade -y
-sudo apt install -y   gphoto2   libgphoto2-6t64   libgphoto2-dev   libusb-1.0-0   usbutils   git
+sudo apt install -y \
+  gphoto2 \
+  libgphoto2-6t64 \
+  libgphoto2-dev \
+  libusb-1.0-0 \
+  usbutils \
+  git
 ```
 
 Verify versions:
@@ -63,7 +69,7 @@ You want libgphoto2 ≥ 2.5.x (Bookworm ships newer).
 
 ## 1.2 Camera Setup (Nikon D750)
 
-### 1.2.1 Fix USB permissions
+### 1.2.1 Install / verify gphoto udev rules
 
 Check if rules exist:
 
@@ -97,9 +103,15 @@ You must see:
 plugdev video dialout
 ```
 
-### 1.2.2 Physical camera configuration
+---
+
+### 1.2.3 Camera physical setup (important)
 
 Before plugging USB in, set these on the camera itself:
+
+#### Nikon D750 settings checklist
+
+On the camera body:
 
 - Mode dial: M (Manual)
 - Image quality: RAW+JPEG (preferred) or JPEG-only
@@ -107,18 +119,23 @@ Before plugging USB in, set these on the camera itself:
   *note: “RAW-only will break strip creation unless you add RAW conversion.”*
 - Wi-Fi: OFF
 - Auto power off: Long / Disabled
+- USB mode: (Nikon auto-detects, no menu option needed)
 - Live View: OFF (intentionally unused by the photobooth)
 - Lens: AF-S or manual focus (your choice)
 
-Power on camera and connect USB.
+Power ON the camera.
 
-### 1.2.3 Verify USB detection
+Now plug USB → Pi.
+
+---
+
+### 1.2.4 Verify USB sees the camera
 
 ```bash
 lsusb
 ```
 
-Expected:
+You should see something like:
 
 ```bash
 Bus 001 Device 006: ID 04b0:0437 Nikon Corp. Nikon DSC D750
@@ -129,9 +146,10 @@ If not:
 - Cable issue
 - Power issue
 - Camera not on
--
 
-### 1.2.4 Verify gphoto access
+---
+
+### 1.2.5 Verify gphoto detection (no sudo)
 
 ```bash
 gphoto2 --auto-detect
@@ -146,6 +164,10 @@ Nikon DSC D750   usb:001,006
 ```
 
 If this fails → permissions not correct → go back to 1.2
+
+---
+
+### 1.2.6 Verify camera communication
 
 ```bash
 gphoto2 --summary
@@ -191,12 +213,15 @@ systemctl --user mask gvfs-gphoto2-volume-monitor.service
 systemctl --user stop gvfs-gphoto2-volume-monitor.service
 ```
 
-### 1.2.5 Test capture
+---
+
+### 1.2.7 Test capture (critical checkpoint)
 
 Run:
 
 ```bash
-gphoto2 --capture-image-and-download   --filename test_%Y%m%d_%H%M%S_%n.%C
+gphoto2 --capture-image-and-download \
+  --filename test_%Y%m%d_%H%M%S_%n.%C
 ```
 
 note: “Expect `.jpg` and `.nef` if RAW+JPEG enabled.”
@@ -210,7 +235,7 @@ Expected behavior:
 Verify:
 
 ```bash
-ls test_*.*
+ls -lh test_*.*
 ```
 
 If this works → 🎉 camera integration at OS level is DONE
@@ -221,7 +246,7 @@ rm test_*.*
 
 ---
 
-## 1.3 Wi‑Fi Access Point (AP)
+## 1.3 Configure Raspberry Pi as Wi‑Fi Access Point (AP)
 
 This configures the Pi to broadcast an **open (password‑free)** Wi‑Fi network for guests and the iPad to connect to at
 events.
@@ -297,12 +322,13 @@ ip addr show wlan0
 ### 1.3.7 Verify from a client
 
 - Connect to Wi‑Fi network: `Photobooth`
-- Open: `http://192.168.4.1:5000`
-- Optional SSH:
+- SSH:
 
 ```bash
 ssh photobooth@192.168.4.1
 ```
+
+Ensure you can connect
 
 ### 1.3.8 Reboot persistence test
 
@@ -312,7 +338,7 @@ sudo reboot
 
 Ensure you can still connect
 
-## 1.10 Printer Setup (Canon SELPHY CP1500)
+## 1.4 Printer Setup (Canon SELPHY CP1500)
 
 The photobooth uses **driverless IPP Everywhere printing over Wi-Fi**.
 
@@ -329,7 +355,7 @@ This approach is:
 
 ---
 
-### 1.10.1 Prepare the printer (on the device)
+### 1.4.1 Prepare the printer (on the device)
 
 On the Canon SELPHY CP1500 touchscreen:
 
@@ -352,7 +378,7 @@ Recommended printer settings:
 
 ---
 
-### 1.10.2 Verify network visibility on the Pi
+### 1.4.2 Verify network visibility on the Pi
 
 ```bash
 ip neigh | grep 192.168.4.
@@ -377,7 +403,7 @@ Expected services:
 
 ---
 
-### 1.10.3 Add the printer to CUPS (driverless)
+### 1.4.3 Add the printer to CUPS (driverless)
 
 Confirm discovery:
 
@@ -416,7 +442,7 @@ sudo lpoptions -p Canon_SELPHY_CP1500 \
 
 ---
 
-### 1.10.4 Verify printer state
+### 1.4.4 Verify printer state
 
 ```bash
 lpstat -p
@@ -427,7 +453,7 @@ printer Canon_SELPHY_CP1500 is idle. enabled
 
 ---
 
-### 1.10.5 Non-destructive queue test
+### 1.4.5 Non-destructive queue test
 
 ```bash
 lp -d Canon_SELPHY_CP1500 /etc/hosts
@@ -443,7 +469,7 @@ Verifies:
 
 ---
 
-### 1.10.6 Real print test
+### 1.4.6 Real print test
 
 ```bash
 lp -d Canon_SELPHY_CP1500 \
