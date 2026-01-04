@@ -451,6 +451,12 @@ class PhotoboothController:
             if self._health_source == HealthSource.CONFIG:
                 return
 
+            # Camera polling may ONLY clear camera-owned errors.
+            # If some other subsystem owns the current error (printer/processing/etc),
+            # do not clear it here.
+            if self._health_source not in (None, HealthSource.CAPTURE):
+                return
+
             self._health_source = None
             self._health_status = HealthStatus.ok()
 

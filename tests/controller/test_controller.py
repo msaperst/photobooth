@@ -1257,3 +1257,49 @@ def test_kick_print_worker_returns_when_no_pending_prints(tmp_path, monkeypatch)
     with controller._print_lock:
         assert controller._pending_prints == []
         assert controller._print_in_flight is False
+
+
+def test_poll_camera_health_does_not_clear_printer_error(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera=camera, printer=NoOpPrinter(), image_root=tmp_path)
+
+    # Seed a PRINTER-owned error
+    controller._set_printer_error("printer offline", reasons=[])
+    assert controller._get_health_source() == HealthSource.PRINTER
+    assert controller.get_health().level == HealthLevel.ERROR
+
+    # Camera is healthy
+    controller.state = ControllerState.IDLE
+    monkeypatch.setattr(camera, "health_check", lambda: True)
+
+    # Camera polling should NOT clear printer error
+    controller._poll_camera_health_if_idle()
+
+    assert controller.get_health().level == HealthLevel.ERROR
+    assert controller._get_health_source() == HealthSource.PRINTER
+    assert "printer offline" in (controller.get_health().message or "")
+
+
+def test_poll_printer_health_does_not_clear_camera_error(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+    printer = HealthCheckPrinter(result={"reachable": True, "state": "idle", "reasons": []})
+    controller = PhotoboothController(camera=camera, printer=printer, image_root=tmp_path)
+    controller.state = ControllerState.IDLE
+
+    # Seed a CAPTURE-owned error
+    controller._set_camera_error(
+        HealthCode.CAMERA_NOT_DETECTED,
+        "Camera missing",
+        source=HealthSource.CAPTURE,
+    )
+    assert controller.get_health().level == HealthLevel.ERROR
+    assert controller._get_health_source() == HealthSource.CAPTURE
+
+    monkeypatch.setattr("controller.controller.time.time", lambda: 6000.0)
+    controller._poll_printer_health_if_idle()
+
+    # Printer poll should not clear camera-owned error
+    health = controller.get_health()
+    assert health.level == HealthLevel.ERROR
+    assert health.code == HealthCode.CAMERA_NOT_DETECTED
+    assert controller._get_health_source() == HealthSource.CAPTURE
