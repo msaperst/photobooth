@@ -1,6 +1,3 @@
-
-# Ensure repo is writable by the service user
-sudo chown -R photobooth:photobooth /opt/photobooth
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -11,6 +8,18 @@ if [[ $EUID -ne 0 ]]; then
   echo "ERROR: run as root: sudo $0"
   exit 1
 fi
+
+require_cmd() {
+  local cmd="$1"
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    echo "ERROR: missing required command: $cmd"
+    exit 1
+  fi
+}
+
+require_cmd git
+require_cmd python3
+require_cmd systemctl
 
 REPO_URL="${REPO_URL:-https://github.com/msaperst/photobooth.git}"
 BRANCH="${BRANCH:-main}"
@@ -28,6 +37,37 @@ SYSTEMD_UNIT_DST="/etc/systemd/system/photobooth.service"
 echo "==> Ensuring /opt exists"
 mkdir -p /opt
 
+echo "==> Ensuring service user exists: photobooth"
+if ! id -u photobooth >/dev/null 2>&1; then
+  echo "ERROR: user 'photobooth' does not exist. Run step1_provision_pi.sh first."
+  exit 1
+fi
+
+# Ensure repo is writable by the service user
+sudo chown -R photobooth:photobooth /opt/photobooth
+
+echo "==> Ensuring app dir exists: ${APP_DIR}"
+mkdir -p "${APP_DIR}"
+
+# Idempotency/safety: don't blindly chown an existing checkout.
+# If permissions are wrong (e.g., you cloned as another user), we fail with a clear fix.
+FORCE_CHOWN="${FORCE_CHOWN:-0}"
+if [[ -d "${APP_DIR}" ]]; then
+  if ! sudo -u photobooth test -w "${APP_DIR}"; then
+    if [[ "${FORCE_CHOWN}" == "1" ]]; then
+      echo "    APP_DIR not writable by photobooth; FORCE_CHOWN=1 set -> fixing ownership"
+      chown -R photobooth:photobooth "${APP_DIR}"
+    else
+      echo "ERROR: ${APP_DIR} is not writable by user 'photobooth'."
+      echo "Fix options:"
+      echo "  - Recommended: sudo chown -R photobooth:photobooth ${APP_DIR}"
+      echo "  - Or re-run with: sudo FORCE_CHOWN=1 $0"
+      echo "(We do NOT auto-chown by default to avoid clobbering manual/prod changes.)"
+      exit 1
+    fi
+  fi
+fi
+
 echo "==> Ensuring data dir exists: ${DATA_DIR}"
 mkdir -p "${DATA_DIR}"
 chown -R photobooth:photobooth "${DATA_DIR}"
@@ -35,8 +75,8 @@ chmod 755 "${DATA_DIR}"
 
 if [[ ! -d "${APP_DIR}/.git" ]]; then
   echo "==> Cloning repo to ${APP_DIR}"
-  git clone "${REPO_URL}" "${APP_DIR}"
-  chown -R photobooth:photobooth "${APP_DIR}"
+  # Clone as the service user so subsequent git operations are consistent.
+  sudo -u photobooth git clone "${REPO_URL}" "${APP_DIR}"
 else
   echo "==> Repo already present at ${APP_DIR}"
 fi
