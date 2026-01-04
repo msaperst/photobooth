@@ -1,6 +1,13 @@
-import { getButtonLabel } from "./ui_logic.js";
-import { getConnectionHealth } from "./ui_state.js";
-import { computeRecentStripUpdate } from "./ui_strip.js";
+import {getButtonLabel} from "./ui_logic.js";
+import {getConnectionHealth} from "./ui_state.js";
+import {computeRecentStripUpdate} from "./ui_strip.js";
+import {
+    clearActionPending,
+    createActionLatch,
+    isPrimaryActionDisabled,
+    markActionPending,
+    updateLatchFromPoll,
+} from "./ui_action.js";
 
 const isBrowser = typeof window !== "undefined";
 
@@ -8,8 +15,10 @@ const isBrowser = typeof window !== "undefined";
 
 let serverReachable = true;
 
+/* ---------- Primary action latch ---------- */
 
-/* ---------- Local click latch ---------- */
+let actionLatch = createActionLatch();
+
 
 // Disable the primary action button immediately on click to prevent double-taps.
 // Re-enable only after we observe a backend state transition (via polling) or on error.
@@ -28,19 +37,13 @@ function _clearActionPending() {
     actionPendingFromState = null;
     actionPendingSinceMs = 0;
 }
+
 /* ---------- UI Helpers ---------- */
 
 function updateButton(status) {
     const button = document.getElementById("startButton");
     button.innerText = getButtonLabel(status);
-
-    const statusAllowsClick =
-        status.state === "IDLE" ||
-        status.state === "READY_FOR_PHOTO";
-
-    // Keep disabled while we are waiting for the backend to transition state
-    // after a click (prevents double-taps during the polling window).
-    button.disabled = actionPending || !statusAllowsClick;
+    button.disabled = isPrimaryActionDisabled(actionLatch, status);
 }
 
 function syncConnectionOverlay() {
@@ -126,7 +129,7 @@ function updateMostRecentStrip(status) {
 
     // scroll if requested
     if (out.shouldScroll) {
-        section.scrollIntoView({ behavior: "smooth", block: "start" });
+        section.scrollIntoView({behavior: "smooth", block: "start"});
     }
 
     // persist state
@@ -137,7 +140,7 @@ function updateMostRecentStrip(status) {
 /* ---------- API ---------- */
 
 async function fetchJson(url) {
-    const response = await fetch(url, { cache: "no-store" });
+    const response = await fetch(url, {cache: "no-store"});
     if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
     }
@@ -156,7 +159,9 @@ async function fetchHealth() {
 
 async function handleButtonClick() {
     if (!serverReachable) return;
-    if (actionPending) return;
+
+    // Ignore double-taps while we are waiting for backend progress.
+    if (actionLatch.pending) return;
 
     // Disable immediately (don’t wait for the next poll tick).
     const button = document.getElementById("startButton");
@@ -168,34 +173,33 @@ async function handleButtonClick() {
     } catch (err) {
         // Could not reach backend; let operator retry.
         button.disabled = false;
-        throw err;
+        return;
     }
 
-    _markActionPending(status.state);
+    actionLatch = markActionPending(actionLatch, {fromState: status.state, nowMs: Date.now()});
 
     try {
         if (status.state === "IDLE") {
             await fetch("/start-session", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {"Content-Type": "application/json"},
                 body: JSON.stringify({
                     print_count: selectedStrips / 2,
                     image_count: 3
                 })
             });
 
-            await fetch("/take-photo", { method: "POST" });
+            await fetch("/take-photo", {method: "POST"});
             return;
         }
 
         if (status.state === "READY_FOR_PHOTO") {
-            await fetch("/take-photo", { method: "POST" });
+            await fetch("/take-photo", {method: "POST"});
         }
     } catch (err) {
         // Request failed; allow retry immediately.
-        _clearActionPending();
+        actionLatch = clearActionPending(actionLatch);
         button.disabled = false;
-        throw err;
     }
 }
 
@@ -208,25 +212,12 @@ async function poll() {
             fetchHealth()
         ]);
 
-
-if (actionPending) {
-    // Clear the pending lock only once we observe the backend has moved on.
-    // We intentionally do NOT use `status.busy` here, because backend semantics may
-    // keep busy=true for long stretches (e.g., during an active session).
-    const stateChanged = actionPendingFromState !== null && status.state !== actionPendingFromState;
-
-    if (stateChanged) {
-        _clearActionPending();
-    } else if (Date.now() - actionPendingSinceMs > 10_000) {
-        // Failsafe: don’t lock forever if something gets stuck.
-        _clearActionPending();
-    }
-}
-
         if (!serverReachable) {
             serverReachable = true;
             syncConnectionOverlay();
         }
+
+        actionLatch = updateLatchFromPoll(actionLatch, {status, nowMs: Date.now()});
 
         updateButton(status);
         enableStripSelection(!status.busy);
