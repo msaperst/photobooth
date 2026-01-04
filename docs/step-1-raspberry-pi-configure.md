@@ -6,6 +6,7 @@
 > The script encodes the steps below exactly. Manual execution is still documented for clarity and debugging.
 
 Prerequisite:
+
 - Clone the repo first (Step 0) so the scripts exist locally under `/opt/photobooth/deployment/scripts/`.
 
 # Step 1: Configure The Raspberry Pi
@@ -236,7 +237,7 @@ Expected behavior:
 Verify:
 
 ```bash
-ls -lh *.jpg
+ls -lh test_*.*
 ```
 
 If this works → 🎉 camera integration at OS level is DONE
@@ -246,7 +247,7 @@ If this works → 🎉 camera integration at OS level is DONE
 ## 1.8 Clean up test files
 
 ```bash
-rm test_*.jpg
+rm test_*.*
 ```
 
 ---
