@@ -493,10 +493,9 @@ def test_set_processing_error_does_not_override_existing_error(tmp_path):
     assert health.message == "Camera failed"
 
 
-
 def test_poll_camera_health_does_not_flash_error_on_transient_failure(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera=camera, printer=NoOpPrinter(), image_root=tmp_path)
     controller.state = ControllerState.READY_FOR_PHOTO
 
     # Transient failure (e.g., gphoto2 slowness) should not immediately surface an error.
@@ -511,6 +510,7 @@ def test_poll_camera_health_does_not_flash_error_on_transient_failure(tmp_path, 
     monkeypatch.setattr("controller.controller.time.time", lambda: t0 + (controller.CAMERA_ERROR_AFTER / 2.0))
     controller._poll_camera_health_if_idle()
     assert controller.get_health().level == HealthLevel.OK
+
 
 def test_poll_camera_health_sets_error_when_health_check_returns_false(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
@@ -684,7 +684,7 @@ def test_busy_flag_true_when_printer_error_active(tmp_path):
 def test_poll_printer_health_noop_when_not_idle(tmp_path):
     camera = FakeCamera(tmp_path)
 
-    class PrinterThatWouldRecover:
+    class PrinterThatWouldRecover(Printer):
         def preflight(self) -> None:
             return
 
@@ -891,7 +891,7 @@ from tests.fakes.fake_camera import FakeCamera
 
 def test_get_status_has_no_most_recent_strip_url_when_no_session_storage(tmp_path):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera=camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     status = controller.get_status()
 
@@ -901,7 +901,7 @@ def test_get_status_has_no_most_recent_strip_url_when_no_session_storage(tmp_pat
 
 def test_get_status_includes_most_recent_strip_url_when_strip_exists(tmp_path):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera=camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     # Create a real file under sessions_root and point storage.strip_path to it.
     fake_strip = controller.sessions_root / "2026-01-02" / "session_x" / "strip.jpg"
@@ -923,7 +923,7 @@ class _ExplodingStorage:
 
 
 def test_get_status_swallows_exception_when_strip_path_access_fails(tmp_path):
-    controller = PhotoboothController(camera=FakeCamera(tmp_path), image_root=tmp_path)
+    controller = PhotoboothController(camera=FakeCamera(tmp_path), printer=NoOpPrinter(), image_root=tmp_path)
     controller._session_storage = _ExplodingStorage()
 
     status = controller.get_status()
