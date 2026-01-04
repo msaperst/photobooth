@@ -8,37 +8,15 @@ const isBrowser = typeof window !== "undefined";
 
 let serverReachable = true;
 
-
-/* ---------- Local click latch ---------- */
-
-// Prevent double-taps: once clicked, keep disabled until the backend state
-// shows progress (busy or no longer in a clickable state).
-let takeActionPending = false;
-let takeActionPendingSinceMs = 0;
-
-function markActionPending() {
-    takeActionPending = true;
-    takeActionPendingSinceMs = Date.now();
-}
-
-function clearActionPending() {
-    takeActionPending = false;
-    takeActionPendingSinceMs = 0;
-}
-
-
 /* ---------- UI Helpers ---------- */
 
 function updateButton(status) {
     const button = document.getElementById("startButton");
     button.innerText = getButtonLabel(status);
-
-    const statusAllowsClick =
+    button.disabled = !(
         status.state === "IDLE" ||
-        status.state === "READY_FOR_PHOTO";
-
-    // If we just clicked, keep disabled until poll sees backend progress.
-    button.disabled = takeActionPending || status.busy || !statusAllowsClick;
+        status.state === "READY_FOR_PHOTO"
+    );
 }
 
 function syncConnectionOverlay() {
@@ -154,48 +132,25 @@ async function fetchHealth() {
 
 async function handleButtonClick() {
     if (!serverReachable) return;
-    if (takeActionPending) return; // ignore double-taps
 
-    // Disable immediately, don't wait for the next poll tick.
-    markActionPending();
-    const button = document.getElementById("startButton");
-    button.disabled = true;
+    const status = await fetchStatus();
 
-    let status;
-    try {
-        status = await fetchStatus();
-    } catch (err) {
-        // If we can't even read status, let operator retry.
-        clearActionPending();
-        button.disabled = false;
-        throw err;
+    if (status.state === "IDLE") {
+        await fetch("/start-session", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                print_count: selectedStrips / 2,
+                image_count: 3
+            })
+        });
+
+        await fetch("/take-photo", { method: "POST" });
+        return;
     }
 
-    try {
-        if (status.state === "IDLE") {
-            await fetch("/start-session", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    print_count: selectedStrips / 2,
-                    image_count: 3
-                })
-            });
-
-            await fetch("/take-photo", { method: "POST" });
-            return;
-        }
-
-        if (status.state === "READY_FOR_PHOTO") {
-            await fetch("/take-photo", { method: "POST" });
-        }
-
-        // Don’t clear here. We clear when poll sees backend progress.
-    } catch (err) {
-        // Request failed; allow retry immediately.
-        clearActionPending();
-        button.disabled = false;
-        throw err;
+    if (status.state === "READY_FOR_PHOTO") {
+        await fetch("/take-photo", { method: "POST" });
     }
 }
 
@@ -207,20 +162,6 @@ async function poll() {
             fetchStatus(),
             fetchHealth()
         ]);
-
-if (takeActionPending) {
-    const statusAllowsClick =
-        status.state === "IDLE" ||
-        status.state === "READY_FOR_PHOTO";
-
-    // Progress means: controller is now busy OR moved out of a clickable state.
-    if (status.busy || !statusAllowsClick) {
-        clearActionPending();
-    } else if (Date.now() - takeActionPendingSinceMs > 10_000) {
-        // Failsafe: don't lock forever if something gets stuck.
-        clearActionPending();
-    }
-}
 
         if (!serverReachable) {
             serverReachable = true;
