@@ -108,3 +108,129 @@ def test_cups_printer_preflight_ok_when_lp_present(monkeypatch):
 
     printer = CupsPrinter(printer_name="DUMMY")
     printer.preflight()  # should not raise
+
+
+def test_cups_printer_health_check_returns_unreachable_when_lpstat_fails(monkeypatch):
+    printer = CupsPrinter(printer_name="SELPHY")
+
+    class FakeProc:
+        def __init__(self, returncode, stdout="", stderr=""):
+            self.returncode = returncode
+            self.stdout = stdout
+            self.stderr = stderr
+
+    def fake_run(cmd, capture_output, text, timeout=None):
+        assert cmd[:2] == ["lpstat", "-v"]
+        return FakeProc(returncode=1, stderr="no such printer")
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+
+    health = printer.health_check()
+    assert health["reachable"] is False
+    assert health["state"] is None
+    assert health["reasons"] == []
+
+
+def test_cups_printer_health_check_returns_unreachable_when_uri_missing(monkeypatch):
+    printer = CupsPrinter(printer_name="SELPHY")
+
+    class FakeProc:
+        def __init__(self, returncode, stdout="", stderr=""):
+            self.returncode = returncode
+            self.stdout = stdout
+            self.stderr = stderr
+
+    def fake_run(cmd, capture_output, text, timeout=None):
+        # lpstat succeeds but doesn't include ipp://
+        if cmd[:2] == ["lpstat", "-v"]:
+            return FakeProc(returncode=0, stdout="device for SELPHY: (unknown)\n")
+        raise AssertionError("ipptool should not be called if uri missing")
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+
+    health = printer.health_check()
+    assert health["reachable"] is False
+    assert health["state"] is None
+    assert health["reasons"] == []
+
+
+def test_cups_printer_health_check_returns_unreachable_when_ipptool_errors(monkeypatch):
+    printer = CupsPrinter(printer_name="SELPHY")
+
+    class FakeProc:
+        def __init__(self, returncode, stdout="", stderr=""):
+            self.returncode = returncode
+            self.stdout = stdout
+            self.stderr = stderr
+
+    def fake_run(cmd, capture_output, text, timeout=None):
+        if cmd[:2] == ["lpstat", "-v"]:
+            return FakeProc(returncode=0, stdout="device for SELPHY: ipp://printer.local:631/ipp/print\n")
+        if cmd[0] == "ipptool":
+            return FakeProc(returncode=1, stderr="connect failed")
+        raise AssertionError(f"unexpected cmd: {cmd}")
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+
+    health = printer.health_check()
+    assert health["reachable"] is False
+    assert health["state"] is None
+    assert health["reasons"] == []
+
+
+def test_cups_printer_health_check_parses_state_and_no_reasons(monkeypatch):
+    printer = CupsPrinter(printer_name="SELPHY")
+
+    class FakeProc:
+        def __init__(self, returncode, stdout="", stderr=""):
+            self.returncode = returncode
+            self.stdout = stdout
+            self.stderr = stderr
+
+    ipptool_out = "\n".join([
+        "printer-state (enum) = idle",
+        "printer-state-reasons (keyword) = none",
+    ])
+
+    def fake_run(cmd, capture_output, text, timeout=None):
+        if cmd[:2] == ["lpstat", "-v"]:
+            return FakeProc(returncode=0, stdout="device for SELPHY: ipp://printer.local:631/ipp/print\n")
+        if cmd[0] == "ipptool":
+            return FakeProc(returncode=0, stdout=ipptool_out)
+        raise AssertionError(f"unexpected cmd: {cmd}")
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+
+    health = printer.health_check()
+    assert health["reachable"] is True
+    assert health["state"] == "idle"
+    assert health["reasons"] == []
+
+
+def test_cups_printer_health_check_parses_reasons_list(monkeypatch):
+    printer = CupsPrinter(printer_name="SELPHY")
+
+    class FakeProc:
+        def __init__(self, returncode, stdout="", stderr=""):
+            self.returncode = returncode
+            self.stdout = stdout
+            self.stderr = stderr
+
+    ipptool_out = "\n".join([
+        "printer-state (enum) = idle",
+        "printer-state-reasons (keyword) = media-empty,marker-supply-empty",
+    ])
+
+    def fake_run(cmd, capture_output, text, timeout=None):
+        if cmd[:2] == ["lpstat", "-v"]:
+            return FakeProc(returncode=0, stdout="device for SELPHY: ipp://printer.local:631/ipp/print\n")
+        if cmd[0] == "ipptool":
+            return FakeProc(returncode=0, stdout=ipptool_out)
+        raise AssertionError(f"unexpected cmd: {cmd}")
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+
+    health = printer.health_check()
+    assert health["reachable"] is True
+    assert health["state"] == "idle"
+    assert health["reasons"] == ["media-empty", "marker-supply-empty"]

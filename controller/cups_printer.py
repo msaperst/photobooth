@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -33,6 +34,22 @@ class CupsPrinter(Printer):
     def _validate(self) -> None:
         if shutil.which(self._lp_path) is None:
             raise PrinterError(f"CUPS not available: '{self._lp_path}' not found in PATH")
+
+    def _get_device_uri(self) -> str:
+        proc = subprocess.run(
+            ["lpstat", "-v", self._printer_name],
+            capture_output=True,
+            text=True,
+        )
+        if proc.returncode != 0:
+            raise PrinterError(proc.stderr.strip())
+
+        # Expected: device for PRINTER: ipp://host:631/ipp/print
+        match = re.search(r":\s*(ipp[s]?://\S+)", proc.stdout)
+        if not match:
+            raise PrinterError("Could not determine printer device URI")
+
+        return match.group(1)
 
     def preflight(self) -> None:
         # Cheap fast check: confirm lp exists.
@@ -73,3 +90,54 @@ class CupsPrinter(Printer):
             if proc.returncode != 0:
                 out = (proc.stdout or "") + (proc.stderr or "")
                 raise PrinterError(f"lp failed (rc={proc.returncode}): {out.strip()}")
+
+    def health_check(self) -> dict:
+        """
+        Actively probe printer via IPP.
+        """
+        try:
+            uri = self._get_device_uri()
+            proc = subprocess.run(
+                [
+                    "ipptool",
+                    "-tv",
+                    uri,
+                    "get-printer-attributes.test",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=2,
+            )
+        except Exception:
+            return {
+                "reachable": False,
+                "state": None,
+                "reasons": [],
+            }
+
+        if proc.returncode != 0:
+            return {
+                "reachable": False,
+                "state": None,
+                "reasons": [],
+            }
+
+        state = None
+        reasons: list[str] = []
+
+        for line in proc.stdout.splitlines():
+            line = line.strip()
+            if line.startswith("printer-state "):
+                # example: printer-state (enum) = idle
+                state = line.split("=")[-1].strip()
+            elif line.startswith("printer-state-reasons "):
+                # example:  printer-state-reasons (keyword) = media-empty,marker-supply-empty
+                raw = line.split("=")[-1].strip()
+                if raw != "none":
+                    reasons = [r.strip() for r in raw.split(",")]
+
+        return {
+            "reachable": True,
+            "state": state,
+            "reasons": reasons,
+        }

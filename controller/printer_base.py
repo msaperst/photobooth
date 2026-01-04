@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from pathlib import Path
+from typing import Optional, Dict, Any
 
 
 class PrinterError(RuntimeError):
@@ -30,3 +31,16 @@ class Printer(ABC):
 
     def preflight(self) -> None:
         """Raise PrinterError if printing is obviously impossible (e.g., CUPS not available)."""
+
+    def health_check(self) -> Optional[Dict[str, Any]]:
+        """
+        Optional printer health probe.
+
+        Returns a dict with:
+          - reachable: bool
+          - state: Optional[str]
+          - reasons: list[str]
+
+        Return None if unsupported.
+        """
+        return None

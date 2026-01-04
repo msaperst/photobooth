@@ -64,11 +64,28 @@ class PhotoboothController:
     # How often to poll camera connectivity when idle/ready (avoid blocking the controller loop)
     CAMERA_POLL_INTERVAL = 1.0  # seconds
 
+    # How long printer connectivity must be failing (while idle/ready) before surfacing an error
+    PRINTER_ERROR_AFTER = 6.0  # seconds
+
+    # How often to poll printer connectivity when idle/ready (avoid blocking the controller loop)
+    PRINTER_POLL_INTERVAL = 2.0  # seconds
+
     # How often to attempt recovery when unhealthy (camera/printer off/unplugged)
     RECOVERY_ATTEMPT_INTERVAL = 2.0  # seconds
 
     # How many photos are taken to build out the strip.
     TOTAL_PHOTOS_PER_SESSION = 3
+
+    # Hints to the user about possible printer errors
+    PRINTER_REASON_HINTS = {
+        "media-empty": "Paper tray may be empty",
+        "media-needed": "Paper tray may need attention",
+        "marker-supply-empty": "Ink cartridge may be empty",
+        "marker-supply-low": "Ink cartridge may be low",
+        "paused": "Printer is paused or waiting for input",
+        "offline": "Printer may be powered off or disconnected",
+        "door-open": "Printer cover or tray may be open",
+    }
 
     def __init__(self, camera: Camera, printer: Printer, image_root: Path, *, strip_logo_path: Path | None = None,
                  event_album_code: str | None = None):
@@ -97,11 +114,10 @@ class PhotoboothController:
 
         # Printer
         self.printer = printer
-        self._pending_print_path: Optional[Path] = None
-        self._pending_print_copies: int = 0
         self._last_printer_recovery_attempt = 0.0
         self._print_lock = threading.Lock()
         self._print_in_flight = False
+        self._pending_prints: list[tuple[Path, int]] = []
 
         # Controller loop
         self.state = ControllerState.IDLE
@@ -113,9 +129,11 @@ class PhotoboothController:
         self._health_lock = threading.Lock()
         self._health_status = HealthStatus.ok()
 
-        # Camera poll debounce (prevents transient gphoto2 slowness from flashing errors)
+        # Camera/printer poll debounce (prevents transient gphoto2/ipp slowness from flashing errors)
         self._camera_poll_last_attempt = 0.0
         self._camera_poll_fail_since: float | None = None
+        self._printer_poll_last_attempt = 0.0
+        self._printer_poll_fail_since: float | None = None
         self._health_source: Optional[HealthSource] = None
 
         # Workers (internal)
@@ -266,36 +284,67 @@ class PhotoboothController:
         if copies < 1:
             return
 
-        # Record what we intend to print so we can retry after recovery
         with self._print_lock:
-            self._pending_print_path = print_path
-            self._pending_print_copies = copies
-
-        try:
-            self.printer.preflight()
-        except Exception as e:
-            self._set_printer_error(str(e))
-            return
+            self._pending_prints.append((print_path, copies))
+            if self._print_in_flight:
+                return
+            self._print_in_flight = True
 
         def _print_worker():
-            with self._print_lock:
-                if self._print_in_flight:
-                    return
-                self._print_in_flight = True
-
             try:
-                self.printer.print_file(print_path, copies=copies, job_name="Photobooth Print")
-                # Success: clear pending
-                with self._print_lock:
-                    self._pending_print_path = None
-                    self._pending_print_copies = 0
+                while True:
+                    with self._print_lock:
+                        if not self._pending_prints:
+                            return
+                        path, count = self._pending_prints[0]
+
+                    self.printer.preflight()
+                    self.printer.print_file(path, copies=count, job_name="Photobooth Print")
+
+                    with self._print_lock:
+                        self._pending_prints.pop(0)
+
             except Exception as e:
-                self._set_printer_error(str(e))
+                self._set_printer_error(str(e), reasons=[])
             finally:
                 with self._print_lock:
                     self._print_in_flight = False
 
-        threading.Thread(target=_print_worker, daemon=True, name="print-worker").start()
+        threading.Thread(target=_print_worker, daemon=True).start()
+
+    def _kick_print_worker_if_needed(self) -> None:
+        """
+        If there are pending prints and no print worker in flight, start a worker
+        to drain the queue. This does not enqueue a new job.
+        """
+        with self._print_lock:
+            if self._print_in_flight:
+                return
+            if not self._pending_prints:
+                return
+            self._print_in_flight = True
+
+        def _print_worker():
+            try:
+                while True:
+                    with self._print_lock:
+                        if not self._pending_prints:
+                            return
+                        path, count = self._pending_prints[0]
+
+                    self.printer.preflight()
+                    self.printer.print_file(path, copies=count, job_name="Photobooth Print")
+
+                    with self._print_lock:
+                        self._pending_prints.pop(0)
+
+            except Exception as e:
+                self._set_printer_error(str(e), reasons=[])
+            finally:
+                with self._print_lock:
+                    self._print_in_flight = False
+
+        threading.Thread(target=_print_worker, daemon=True).start()
 
     # ---------- Health helpers ----------
 
@@ -339,41 +388,58 @@ class PhotoboothController:
         )
 
     def _poll_printer_health_if_idle(self) -> None:
-        # Only recover while idle
         if self.state != ControllerState.IDLE:
             return
 
-        with self._health_lock:
-            if self._health_source != HealthSource.PRINTER:
-                return
-
-        with self._print_lock:
-            if self._print_in_flight:
-                return
-            pending_path = self._pending_print_path
-            pending_copies = self._pending_print_copies
-
-        if pending_path is None or pending_copies < 1:
-            return
-
         now = time.time()
-        if now - self._last_printer_recovery_attempt < self.RECOVERY_ATTEMPT_INTERVAL:
+        if now - self._printer_poll_last_attempt < self.PRINTER_POLL_INTERVAL:
             return
-        self._last_printer_recovery_attempt = now
+        self._printer_poll_last_attempt = now
 
+        health = None
         try:
-            self.printer.preflight()
+            health = self.printer.health_check()
         except Exception:
+            health = None
+
+        if not health:
+            return  # printer does not support health checks
+
+        if not health["reachable"]:
+            if self._printer_poll_fail_since is None:
+                self._printer_poll_fail_since = now
+                return
+            if now - self._printer_poll_fail_since < self.PRINTER_ERROR_AFTER:
+                return
+
+            self._set_printer_error(
+                "Printer is not reachable",
+                reasons=[],
+            )
             return
 
-        # Clear PRINTER error (owned by PRINTER)
+        # Reachable
+        self._printer_poll_fail_since = None
+
+        reasons = health.get("reasons", [])
+        if reasons:
+            self._set_printer_error(
+                "Printer reported a problem",
+                reasons=reasons,
+            )
+            return
+
+        # Healthy again → clear PRINTER error
+        cleared = False
         with self._health_lock:
             if self._health_source == HealthSource.PRINTER:
                 self._health_source = None
                 self._health_status = HealthStatus.ok()
+                cleared = True
 
-        # Retry print job
-        self._start_print_job(pending_path, copies=pending_copies)
+        # If we just recovered and there are pending prints, resume draining.
+        if cleared:
+            self._kick_print_worker_if_needed()
 
     def _get_health_source(self) -> Optional[HealthSource]:
         with self._health_lock:
@@ -423,19 +489,28 @@ class PhotoboothController:
                 recoverable=False,
             )
 
-    def _set_printer_error(self, message: str):
+    def _set_printer_error(self, message: str, *, reasons: list[str]):
         with self._health_lock:
             if self._health_status.level == HealthLevel.ERROR:
                 return
+
+            instructions = [
+                "Check that the printer is powered on",
+                "Confirm the printer is connected to the Photobooth Wi-Fi",
+                "Verify the CUPS queue is online",
+                "Check paper/ink and clear any jams",
+            ]
+
+            if reasons:
+                instructions.append("Reported by printer:")
+                for r in reasons:
+                    hint = self.PRINTER_REASON_HINTS.get(r, f"Printer reported: {r}")
+                    instructions.append(f"- {hint}")
+
             self._health_source = HealthSource.PRINTER
             self._health_status = HealthStatus.error(
                 code=HealthCode.PRINTER_FAILED,
                 message=message,
-                instructions=[
-                    "Check that the printer is powered on",
-                    "Check the USB cable",
-                    "Verify the CUPS queue is configured and online",
-                    "Check paper/ink and clear any jams",
-                ],
+                instructions=instructions,
                 recoverable=True,
             )

@@ -375,6 +375,12 @@ def test_printer_recovery_clears_health_and_retries_pending_print(tmp_path, monk
             if not self.preflight_ok:
                 raise RuntimeError("lp missing")
 
+        def health_check(self):
+            # When printer is "fixed", it becomes reachable and healthy.
+            if not self.preflight_ok:
+                return {"reachable": False, "state": None, "reasons": []}
+            return {"reachable": True, "state": "idle", "reasons": []}
+
         def print_file(self, file_path, *, copies=1, job_name=None) -> None:
             self.print_calls += 1
 
@@ -411,13 +417,12 @@ def test_printer_recovery_clears_health_and_retries_pending_print(tmp_path, monk
     assert printer.print_calls == 0
     assert controller.get_status()["busy"] is True
 
-    # "Fix" printer and force recovery attempt timing
+    # "Fix" printer
     printer.preflight_ok = True
-    controller._last_printer_recovery_attempt = 0.0
 
-    # Trigger recovery directly (deterministic, no waiting on run loop timing)
+    # Trigger idle poll directly (deterministic)
     controller._poll_printer_health_if_idle()
 
-    # Should clear health and retry printing (async thread)
+    # Should clear health and resume pending prints
     wait_for(lambda: controller.get_health().level == HealthLevel.OK)
-    wait_for(lambda: printer.print_calls == 1)
+    wait_for(lambda: printer.print_calls >= 1)
