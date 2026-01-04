@@ -18,6 +18,7 @@ apt-get install -y \
   git \
   gphoto2 \
   libgphoto2-6t64 \
+  libgphoto2-dev \
   libusb-1.0-0 \
   usbutils \
   cups \
@@ -57,6 +58,27 @@ echo "    gsettings set org.gnome.desktop.media-handling automount false"
 echo "    gsettings set org.gnome.desktop.media-handling automount-open false"
 echo "    systemctl --user mask gvfs-gphoto2-volume-monitor.service"
 echo "    systemctl --user stop gvfs-gphoto2-volume-monitor.service"
+
+echo ""
+echo "==> Camera quick verification"
+echo "    Plug in the Nikon D750 via USB and power it on."
+echo "    (If you see 'could not claim the device', see the NOTE above.)"
+read -r -p "Press Enter to run camera detection (or Ctrl+C to abort)..." _
+
+set +e
+sudo -u photobooth -H gphoto2 --auto-detect
+AUTO_DETECT_RC=$?
+sudo -u photobooth -H gphoto2 --summary
+SUMMARY_RC=$?
+set -e
+
+if [[ $AUTO_DETECT_RC -ne 0 || $SUMMARY_RC -ne 0 ]]; then
+  echo "WARNING: Camera verification did not succeed (auto-detect rc=$AUTO_DETECT_RC, summary rc=$SUMMARY_RC)."
+  echo "         If you are on a desktop environment, the gvfs steps above usually fix 'could not claim the device'."
+  echo "         Otherwise, confirm the camera is in the correct USB mode and try a different USB port/cable."
+else
+  echo "    Camera verification OK."
+fi
 
 
 echo "==> Configuring Wi-Fi Access Point (AP) via NetworkManager"
@@ -184,4 +206,4 @@ fi
 echo "==> Done."
 echo "Next steps:"
 echo "  1) Reboot: say 'sudo reboot' (USB group changes require re-login)"
-echo "  2) Follow camera verification steps (lsusb, gphoto2 --auto-detect, gphoto2 --summary)"
+echo "  2) If you skipped camera verification, run: gphoto2 --auto-detect && gphoto2 --summary"
