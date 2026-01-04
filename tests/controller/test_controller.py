@@ -11,7 +11,6 @@ from controller.controller import (
 from controller.health import HealthLevel, HealthCode, HealthSource
 from controller.printer_base import Printer
 from imaging.strip_errors import StripCreationError
-from tests.fakes.fake_camera import FakeCamera
 from tests.helpers import wait_for
 
 
@@ -427,7 +426,7 @@ def test_poll_camera_health_noop_when_not_idle(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
     controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
-    controller.state = ControllerState.READY_FOR_PHOTO
+    controller.state = ControllerState.CAPTURING_PHOTO
 
     called = {"n": 0}
     monkeypatch.setattr(camera, "health_check", lambda: called.__setitem__("n", 1))
@@ -459,11 +458,17 @@ def test_poll_camera_health_marks_ok_when_camera_recovers(tmp_path, monkeypatch)
 
 def test_poll_camera_health_sets_error_on_exception(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
-    controller.state = ControllerState.IDLE
+    controller = PhotoboothController(camera=camera, printer=NoOpPrinter(), image_root=tmp_path)
+    controller.state = ControllerState.READY_FOR_PHOTO
 
     monkeypatch.setattr(camera, "health_check", lambda: (_ for _ in ()).throw(RuntimeError()))
 
+    t0 = 2000.0
+    monkeypatch.setattr("controller.controller.time.time", lambda: t0)
+    controller._poll_camera_health_if_idle()
+    assert controller.get_health().level == HealthLevel.OK
+
+    monkeypatch.setattr("controller.controller.time.time", lambda: t0 + controller.CAMERA_ERROR_AFTER + 0.1)
     controller._poll_camera_health_if_idle()
 
     health = controller.get_health()
@@ -488,20 +493,45 @@ def test_set_processing_error_does_not_override_existing_error(tmp_path):
     assert health.message == "Camera failed"
 
 
+
+def test_poll_camera_health_does_not_flash_error_on_transient_failure(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera, tmp_path)
+    controller.state = ControllerState.READY_FOR_PHOTO
+
+    # Transient failure (e.g., gphoto2 slowness) should not immediately surface an error.
+    monkeypatch.setattr(camera, "health_check", lambda: False)
+
+    t0 = 3000.0
+    monkeypatch.setattr("controller.controller.time.time", lambda: t0)
+    controller._poll_camera_health_if_idle()
+    assert controller.get_health().level == HealthLevel.OK
+
+    # Still within debounce window -> still OK
+    monkeypatch.setattr("controller.controller.time.time", lambda: t0 + (controller.CAMERA_ERROR_AFTER / 2.0))
+    controller._poll_camera_health_if_idle()
+    assert controller.get_health().level == HealthLevel.OK
+
 def test_poll_camera_health_sets_error_when_health_check_returns_false(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
     controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
-    # Must be IDLE for polling to occur
     controller.state = ControllerState.IDLE
 
     # Simulate camera responding but reporting unhealthy
     monkeypatch.setattr(camera, "health_check", lambda: False)
 
+    # Debounced: first failure should not immediately surface an error.
+    t0 = 1000.0
+    monkeypatch.setattr("controller.controller.time.time", lambda: t0)
+    controller._poll_camera_health_if_idle()
+    assert controller.get_health().level == HealthLevel.OK
+
+    # After sustained failure beyond threshold, error should surface.
+    monkeypatch.setattr("controller.controller.time.time", lambda: t0 + controller.CAMERA_ERROR_AFTER + 0.1)
     controller._poll_camera_health_if_idle()
 
     health = controller.get_health()
-
     assert health.level == HealthLevel.ERROR
     assert health.code == HealthCode.CAMERA_NOT_DETECTED
     assert controller._get_health_source() == HealthSource.CAPTURE
@@ -854,3 +884,56 @@ def test_set_config_error_does_not_overwrite_existing_error(tmp_path):
     assert controller.get_health().level == HealthLevel.ERROR
     assert controller.get_health().code == HealthCode.CAMERA_NOT_DETECTED
     assert controller._get_health_source() == HealthSource.CAPTURE
+
+
+from tests.fakes.fake_camera import FakeCamera
+
+
+def test_get_status_has_no_most_recent_strip_url_when_no_session_storage(tmp_path):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera, tmp_path)
+
+    status = controller.get_status()
+
+    # Depending on your implementation, it might omit the key or set it to None.
+    assert status.get("most_recent_strip_url") in (None,)
+
+
+def test_get_status_includes_most_recent_strip_url_when_strip_exists(tmp_path):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera, tmp_path)
+
+    # Create a real file under sessions_root and point storage.strip_path to it.
+    fake_strip = controller.sessions_root / "2026-01-02" / "session_x" / "strip.jpg"
+    fake_strip.parent.mkdir(parents=True, exist_ok=True)
+    fake_strip.write_bytes(b"\xff\xd8\xff\xe0" + b"FAKEJPEG")
+
+    controller._session_storage = type("S", (), {"strip_path": fake_strip})()
+
+    status = controller.get_status()
+    assert "most_recent_strip_url" in status
+    assert status["most_recent_strip_url"].startswith("/sessions/")
+    assert status["most_recent_strip_url"].endswith("strip.jpg")
+
+
+class _ExplodingStorage:
+    @property
+    def strip_path(self) -> Path:
+        raise RuntimeError("boom")
+
+
+def test_get_status_swallows_exception_when_strip_path_access_fails(tmp_path):
+    controller = PhotoboothController(camera=FakeCamera(tmp_path), image_root=tmp_path)
+    controller._session_storage = _ExplodingStorage()
+
+    status = controller.get_status()
+
+    # Should still return base status keys
+    assert status["state"] in {"IDLE", "READY_FOR_PHOTO", "COUNTDOWN", "CAPTURING_PHOTO", "PROCESSING", "PRINTING"}
+    assert "busy" in status
+    assert "photos_taken" in status
+    assert "total_photos" in status
+    assert "countdown_remaining" in status
+
+    # Exception path should prevent adding the derived URL
+    assert "most_recent_strip_url" not in status

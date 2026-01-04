@@ -1,5 +1,13 @@
-import { getButtonLabel } from "./ui_logic.js";
-import { getConnectionHealth } from "./ui_state.js";
+import {getButtonLabel} from "./ui_logic.js";
+import {getConnectionHealth} from "./ui_state.js";
+import {computeRecentStripUpdate} from "./ui_strip.js";
+import {
+    clearActionPending,
+    createActionLatch,
+    isPrimaryActionDisabled,
+    markActionPending,
+    updateLatchFromPoll,
+} from "./ui_action.js";
 
 const isBrowser = typeof window !== "undefined";
 
@@ -7,15 +15,35 @@ const isBrowser = typeof window !== "undefined";
 
 let serverReachable = true;
 
+/* ---------- Primary action latch ---------- */
+
+let actionLatch = createActionLatch();
+
+
+// Disable the primary action button immediately on click to prevent double-taps.
+// Re-enable only after we observe a backend state transition (via polling) or on error.
+let actionPending = false;
+let actionPendingFromState = null;
+let actionPendingSinceMs = 0;
+
+function _markActionPending(fromState) {
+    actionPending = true;
+    actionPendingFromState = fromState;
+    actionPendingSinceMs = Date.now();
+}
+
+function _clearActionPending() {
+    actionPending = false;
+    actionPendingFromState = null;
+    actionPendingSinceMs = 0;
+}
+
 /* ---------- UI Helpers ---------- */
 
 function updateButton(status) {
     const button = document.getElementById("startButton");
     button.innerText = getButtonLabel(status);
-    button.disabled = !(
-        status.state === "IDLE" ||
-        status.state === "READY_FOR_PHOTO"
-    );
+    button.disabled = isPrimaryActionDisabled(actionLatch, status);
 }
 
 function syncConnectionOverlay() {
@@ -68,10 +96,51 @@ function updateHealthOverlay(health) {
     overlay.classList.remove("hidden");
 }
 
+/* -------Last Strip ------- */
+
+let lastMostRecentStripUrl = null;
+let shouldAutoScrollToStrip = false;
+
+function updateMostRecentStrip(status) {
+    const section = document.getElementById("recentStripSection");
+    if (!section) return;
+
+    const stripImg = document.getElementById("recentStripImage");
+    const qrImg = document.getElementById("recentStripQr");
+
+    const out = computeRecentStripUpdate({
+        status,
+        lastMostRecentStripUrl,
+        lastBusy,
+        shouldAutoScrollToStrip,
+        nowMs: Date.now(),
+    });
+
+    // visibility
+    if (!out.show) {
+        section.classList.add("hidden");
+    } else {
+        section.classList.remove("hidden");
+    }
+
+    // update sources only when provided (URL changed)
+    if (out.stripSrc) stripImg.src = out.stripSrc;
+    if (out.qrSrc) qrImg.src = out.qrSrc;
+
+    // scroll if requested
+    if (out.shouldScroll) {
+        section.scrollIntoView({behavior: "smooth", block: "start"});
+    }
+
+    // persist state
+    lastMostRecentStripUrl = out.nextLastMostRecentStripUrl;
+    shouldAutoScrollToStrip = out.nextShouldAutoScrollToStrip;
+}
+
 /* ---------- API ---------- */
 
 async function fetchJson(url) {
-    const response = await fetch(url, { cache: "no-store" });
+    const response = await fetch(url, {cache: "no-store"});
     if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
     }
@@ -91,24 +160,46 @@ async function fetchHealth() {
 async function handleButtonClick() {
     if (!serverReachable) return;
 
-    const status = await fetchStatus();
+    // Ignore double-taps while we are waiting for backend progress.
+    if (actionLatch.pending) return;
 
-    if (status.state === "IDLE") {
-        await fetch("/start-session", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                print_count: selectedStrips / 2,
-                image_count: 3
-            })
-        });
+    // Disable immediately (don’t wait for the next poll tick).
+    const button = document.getElementById("startButton");
+    button.disabled = true;
 
-        await fetch("/take-photo", { method: "POST" });
+    let status;
+    try {
+        status = await fetchStatus();
+    } catch (err) {
+        // Could not reach backend; let operator retry.
+        button.disabled = false;
         return;
     }
 
-    if (status.state === "READY_FOR_PHOTO") {
-        await fetch("/take-photo", { method: "POST" });
+    actionLatch = markActionPending(actionLatch, {fromState: status.state, nowMs: Date.now()});
+
+    try {
+        if (status.state === "IDLE") {
+            await fetch("/start-session", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                    print_count: selectedStrips / 2,
+                    image_count: 3
+                })
+            });
+
+            await fetch("/take-photo", {method: "POST"});
+            return;
+        }
+
+        if (status.state === "READY_FOR_PHOTO") {
+            await fetch("/take-photo", {method: "POST"});
+        }
+    } catch (err) {
+        // Request failed; allow retry immediately.
+        actionLatch = clearActionPending(actionLatch);
+        button.disabled = false;
     }
 }
 
@@ -126,8 +217,11 @@ async function poll() {
             syncConnectionOverlay();
         }
 
+        actionLatch = updateLatchFromPoll(actionLatch, {status, nowMs: Date.now()});
+
         updateButton(status);
         enableStripSelection(!status.busy);
+        updateMostRecentStrip(status);
         updateHealthOverlay(health);
 
         if (lastBusy && !status.busy) {

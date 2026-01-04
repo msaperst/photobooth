@@ -219,3 +219,84 @@ def test_take_photo_blocked_when_unhealthy(monkeypatch, tmp_path):
     assert payload["ok"] is False
     assert payload["error"] == "unhealthy"
     assert payload["health"]["code"] == "CONFIG_INVALID"
+
+
+def test_status_includes_most_recent_strip_url_when_strip_exists(client, tmp_path):
+    # Arrange: create a fake "most recent strip" on disk in the expected sessions dir
+    sessions_root = tmp_path / "sessions"
+    sessions_root.mkdir(parents=True, exist_ok=True)
+
+    # This mirrors your runtime structure; use any nested path because the controller
+    # should compute a /sessions/<relative> URL.
+    fake_strip = sessions_root / "2026-01-02" / "session_test" / "strip.jpg"
+    fake_strip.parent.mkdir(parents=True, exist_ok=True)
+    fake_strip.write_bytes(b"\xff\xd8\xff\xe0" + b"FAKEJPEG")  # minimal JPEG-like bytes
+
+    # Your implementation determines "most recent strip" based on controller storage.
+    # If your app uses controller._session_storage.strip_path, ensure that points to fake_strip.
+    # If you implemented a different mechanism, adjust this setup accordingly.
+    app = client.application
+    app.controller._session_storage = type("S", (), {"strip_path": fake_strip})()
+
+    # Act
+    r = client.get("/status")
+    assert r.status_code == 200
+    payload = r.get_json()
+
+    # Assert
+    assert "most_recent_strip_url" in payload
+    assert payload["most_recent_strip_url"].startswith("/sessions/")
+    assert payload["most_recent_strip_url"].endswith("strip.jpg")
+
+
+def test_download_most_recent_strip_returns_attachment(client, tmp_path):
+    sessions_root = tmp_path / "sessions"
+    sessions_root.mkdir(parents=True, exist_ok=True)
+    fake_strip = sessions_root / "x" / "strip.jpg"
+    fake_strip.parent.mkdir(parents=True, exist_ok=True)
+    fake_strip.write_bytes(b"\xff\xd8\xff\xe0" + b"FAKEJPEG")
+
+    app = client.application
+    app.controller._session_storage = type("S", (), {"strip_path": fake_strip})()
+
+    r = client.get("/download/most-recent-strip")
+    assert r.status_code == 200
+    assert r.headers["Content-Type"].startswith("image/jpeg")
+    cd = r.headers.get("Content-Disposition", "")
+    assert "attachment" in cd
+    assert "photo_strip.jpg" in cd
+    assert r.data.startswith(b"\xff\xd8")
+
+
+def test_download_most_recent_strip_404_when_missing(client):
+    app = client.application
+    app.controller._session_storage = None
+
+    r = client.get("/download/most-recent-strip")
+    assert r.status_code == 404
+    payload = r.get_json()
+    assert payload["ok"] is False
+    assert payload["error"] == "no_strip"
+
+
+def test_qr_most_recent_strip_is_png(client, tmp_path):
+    # QR does not require a real strip file; it should always render a QR png.
+    r = client.get("/qr/most-recent-strip.png")
+    assert r.status_code == 200
+    assert r.headers["Content-Type"].startswith("image/png")
+    # PNG signature
+    assert r.data.startswith(b"\x89PNG\r\n\x1a\n")
+
+
+def test_download_most_recent_strip_404_when_storage_present_but_file_missing(client, tmp_path):
+    # Create a strip path that does NOT exist
+    missing = tmp_path / "sessions" / "whatever" / "strip.jpg"
+    assert not missing.exists()
+
+    app = client.application
+    app.controller._session_storage = type("S", (), {"strip_path": missing})()
+
+    r = client.get("/download/most-recent-strip")
+    assert r.status_code == 404
+    payload = r.get_json()
+    assert payload == {"ok": False, "error": "no_strip"}

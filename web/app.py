@@ -1,10 +1,13 @@
 """
 Flask application for photobooth UI and API.
 """
+import io
 import os
 from pathlib import Path
 
-from flask import Flask, jsonify, request, render_template, send_from_directory
+import qrcode
+from PIL import Image
+from flask import Flask, jsonify, request, render_template, send_from_directory, send_file
 
 from controller.camera_base import Camera
 from controller.controller import PhotoboothController, Command, CommandType
@@ -172,5 +175,56 @@ def create_app(camera: Camera | None = None, printer: Printer | None = None, ima
     def sessions(filename: str):
         sessions_root = app.config["SESSIONS_ROOT"]
         return send_from_directory(str(sessions_root), filename)
+
+    def _get_most_recent_strip_path() -> Path | None:
+        # Controller keeps the last session storage around; use it for UI downloads.
+        storage = controller._session_storage
+        if storage is None:
+            return None
+        strip_path = storage.strip_path
+        if strip_path.exists() and strip_path.is_file():
+            return strip_path
+        return None
+
+    @app.route("/download/most-recent-strip", methods=["GET"])
+    def download_most_recent_strip():
+        strip_path = _get_most_recent_strip_path()
+        if strip_path is None:
+            return jsonify({"ok": False, "error": "no_strip"}), 404
+
+        return send_file(
+            strip_path,
+            mimetype="image/jpeg",
+            as_attachment=True,
+            download_name="photo_strip.jpg",
+            max_age=0,
+        )
+
+    @app.route("/qr/most-recent-strip.png", methods=["GET"])
+    def qr_most_recent_strip():
+        # QR points to a download endpoint so the phone downloads directly.
+        url = request.host_url.rstrip("/") + "/download/most-recent-strip"
+
+        qr = qrcode.QRCode(
+            error_correction=qrcode.constants.ERROR_CORRECT_M,
+            border=1,
+        )
+        qr.add_data(url)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="black", back_color="white")
+
+        # Deterministic size + crisp pixels (avoid antialiasing).
+        try:
+            resample = Image.Resampling.NEAREST  # Pillow >= 9
+        except AttributeError:  # pragma: no cover
+            resample = Image.NEAREST
+
+        img = img.resize((320, 320), resample=resample).convert("RGB")
+
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        buf.seek(0)
+
+        return send_file(buf, mimetype="image/png", max_age=0)
 
     return app

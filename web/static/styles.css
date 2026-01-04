@@ -4,6 +4,7 @@
     --brand-purple: #6B5B95;
     --brand-bg: #F6F8F7;
     --brand-text: #2E2E2E;
+    --brand-purple-dark: #4E4370;
 }
 
 body {
@@ -12,6 +13,10 @@ body {
     color: var(--brand-text);
     text-align: center;
     padding: 2rem;
+}
+
+.hidden {
+    display: none;
 }
 
 img.logo {
@@ -63,10 +68,13 @@ button:disabled {
 .strip-options {
     display: flex;
     justify-content: center;
+    flex-wrap: wrap;
     gap: 1rem;
 }
 
 .strip-option {
+    flex: 1 1 140px;
+    max-width: 220px;
     font-size: 1.3rem;
     padding: 1rem 1.5rem;
     border-radius: 10px;
@@ -75,6 +83,12 @@ button:disabled {
     color: var(--brand-purple);
     cursor: pointer;
     min-width: 120px;
+    box-shadow: 0 4px 0 var(--brand-purple-dark);
+}
+
+.strip-option:active {
+    transform: translateY(4px);
+    box-shadow: 0 2px 0 var(--brand-purple-dark);
 }
 
 .strip-option.active {
@@ -132,4 +146,66 @@ body.health-error * {
 
 body.health-error .health-overlay {
     pointer-events: all;
+}
+
+/* Recent Strip */
+.recent-strip {
+    margin: 2.5rem auto 0;
+    max-width: 900px;
+    background: white;
+    border-radius: 16px;
+    padding: 1.5rem;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+}
+
+.recent-strip-title {
+    margin: 0 0 1rem;
+    color: var(--brand-purple);
+    font-size: 1.6rem;
+}
+
+.recent-strip-content {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.recent-strip-preview {
+    flex: 0 1 280px;
+}
+
+#recentStripImage {
+    width: 100%;
+    height: auto;
+    max-height: 560px;
+    border-radius: 12px;
+    background: #f0f0f0;
+    object-fit: contain;
+}
+
+.recent-strip-download {
+    flex: 1 1 320px;
+    max-width: 380px;
+    text-align: center;
+}
+
+.recent-strip-copy {
+    margin: 0 0 1rem;
+    font-size: 1.05rem;
+    line-height: 1.4;
+}
+
+#recentStripQr {
+    width: 220px;
+    height: 220px;
+    border-radius: 12px;
+    background: white;
+}
+
+.recent-strip-hint {
+    margin: 0.75rem 0 0;
+    opacity: 0.8;
+    font-size: 0.95rem;
 }
