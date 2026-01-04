@@ -12,6 +12,7 @@ Goals:
 """
 
 import threading
+import time
 from enum import Enum, auto
 from pathlib import Path
 from queue import Queue, Empty
@@ -45,6 +46,12 @@ class Command:
 
 
 class PhotoboothController:
+    # How long camera connectivity must be failing (while idle/ready) before surfacing an error
+    CAMERA_ERROR_AFTER = 2.5  # seconds
+
+    # How often to poll camera connectivity when idle/ready (avoid blocking the controller loop)
+    CAMERA_POLL_INTERVAL = 1.0  # seconds
+
     # How long live view must be failing (while idle/ready) before surfacing an error
     LIVE_VIEW_ERROR_AFTER = 2.5  # seconds
 
@@ -84,6 +91,10 @@ class PhotoboothController:
         # Health
         self._health_lock = threading.Lock()
         self._health_status = HealthStatus.ok()
+
+        # Camera poll debounce (prevents transient gphoto2 slowness from flashing errors)
+        self._camera_poll_last_attempt = 0.0
+        self._camera_poll_fail_since: float | None = None
         self._health_source: Optional[HealthSource] = None
 
         # Workers (internal)
@@ -225,26 +236,43 @@ class PhotoboothController:
     # ---------- Health helpers ----------
 
     def _poll_camera_health_if_idle(self) -> None:
+        # Only poll camera health when we are "idle enough" that we won't interfere with capture.
+        # READY_FOR_PHOTO is included so we can surface a disconnect before the operator presses
+        # the button, but we debounce to avoid transient gphoto2 slowness flashing errors.
         if self.state not in (
-                ControllerState.IDLE,
-                ControllerState.READY_FOR_PHOTO,
-        ):            return
+            ControllerState.IDLE,
+            ControllerState.READY_FOR_PHOTO,
+        ):
+            return
+
+        now = time.time()
+        if now - self._camera_poll_last_attempt < self.CAMERA_POLL_INTERVAL:
+            return
+        self._camera_poll_last_attempt = now
 
         try:
-            if self.camera.health_check():
-                self._mark_camera_ok()
-            else:
-                self._set_camera_error(
-                    HealthCode.CAMERA_NOT_DETECTED,
-                    CAMERA_NOT_DETECTED,
-                    source=HealthSource.CAPTURE,
-                )
+            ok = bool(self.camera.health_check())
         except Exception:
-            self._set_camera_error(
-                HealthCode.CAMERA_NOT_DETECTED,
-                CAMERA_NOT_DETECTED,
-                source=HealthSource.CAPTURE,
-            )
+            ok = False
+
+        if ok:
+            self._camera_poll_fail_since = None
+            self._mark_camera_ok()
+            return
+
+        # Failure: only surface after sustained failure window.
+        if self._camera_poll_fail_since is None:
+            self._camera_poll_fail_since = now
+            return
+
+        if now - self._camera_poll_fail_since < self.CAMERA_ERROR_AFTER:
+            return
+
+        self._set_camera_error(
+            HealthCode.CAMERA_NOT_DETECTED,
+            CAMERA_NOT_DETECTED,
+            source=HealthSource.CAPTURE,
+        )
 
     def _get_health_source(self) -> Optional[HealthSource]:
         with self._health_lock:
@@ -258,6 +286,10 @@ class PhotoboothController:
 
             self._health_source = None
             self._health_status = HealthStatus.ok()
+
+        # Camera poll debounce (prevents transient gphoto2 slowness from flashing errors)
+        self._camera_poll_last_attempt = 0.0
+        self._camera_poll_fail_since: float | None = None
 
     def _set_camera_error(self, code: HealthCode, message: str, *, source: HealthSource):
         with self._health_lock:
