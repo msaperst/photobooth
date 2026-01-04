@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+
+ARCH="$(uname -m || true)"
+if [[ "${ARCH}" != "aarch64" ]]; then
+  echo "WARN: Detected architecture: ${ARCH}. For SELPHY printing, use Raspberry Pi OS 64-bit (aarch64)."
+fi
 # Step 1 provisioning: OS deps + user/group setup.
 # Safe to re-run.
 
@@ -15,6 +20,10 @@ apt-get upgrade -y
 
 # Keep this intentionally minimal and explicit.
 apt-get install -y \
+  cups \
+  cups-client \
+  printer-driver-gutenprint \
+  curl \
   git \
   gphoto2 \
   libgphoto2-6t64 \
@@ -93,6 +102,37 @@ if ! command -v nmcli >/dev/null 2>&1; then
 fi
 
 # Recreate the AP connection deterministically (nmcli behavior varies by distro/version).
+
+echo "==> Setting up SELPHY CP1500 printer queue (if connected)"
+systemctl enable cups
+systemctl restart cups
+
+PRINTER_URI="$(lpinfo -v 2>/dev/null | awk '/usb:\/\/Canon\/SELPHY/ {print $2; exit}')"
+if [[ -n "${PRINTER_URI}" ]]; then
+  echo "    Found SELPHY URI: ${PRINTER_URI}"
+  MODEL="$(lpinfo -m | awk 'BEGIN{IGNORECASE=1} /selphy/ && /cp1500/ {print $1; exit}')"
+  if [[ -z "${MODEL}" ]]; then
+    MODEL="$(lpinfo -m | awk 'BEGIN{IGNORECASE=1} /selphy/ && /cp1300/ {print $1; exit}')"
+  fi
+  if [[ -z "${MODEL}" ]]; then
+    MODEL="$(lpinfo -m | awk 'BEGIN{IGNORECASE=1} /selphy/ && /cp1200/ {print $1; exit}')"
+  fi
+
+  if [[ -z "${MODEL}" ]]; then
+    echo "    WARN: Could not find SELPHY Gutenprint model (lpinfo -m | grep -i selphy)."
+  else
+    echo "    Using model: ${MODEL}"
+    lpadmin -x SELPHY_CP1500 >/dev/null 2>&1 || true
+    lpadmin -p SELPHY_CP1500 -E -v "${PRINTER_URI}" -m "${MODEL}"
+    cupsenable SELPHY_CP1500
+    cupsaccept SELPHY_CP1500
+    lpstat -t || true
+  fi
+else
+  echo "    NOTE: SELPHY not detected. Plug it in and re-run step1_provision_pi.sh to create the queue."
+fi
+
+
 if nmcli -t -f NAME connection show | grep -qx "photobooth-ap"; then
   echo "==> Removing existing NetworkManager connection: photobooth-ap"
   nmcli connection delete photobooth-ap

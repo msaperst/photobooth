@@ -125,6 +125,55 @@ Now plug USB → Pi.
 
 ---
 
+
+## Printer setup (Canon SELPHY CP1500 via CUPS)
+
+Why this exists:
+- On Raspberry Pi OS 64-bit, we can install Gutenprint drivers and create a proper CUPS queue for the SELPHY.
+- The app expects a queue named `SELPHY_CP1500` (default destination).
+
+Install CUPS + Gutenprint (if not already installed by the script):
+
+```bash
+sudo apt update
+sudo apt install -y cups cups-client printer-driver-gutenprint
+```
+
+Verify printer is detected:
+
+```bash
+lsusb | grep -i canon || true
+sudo lpinfo -v | grep -i -E "canon|selphy|cp1500" || true
+```
+
+Find the best SELPHY model (prefer CP1500, otherwise CP1300/CP1200):
+
+```bash
+lpinfo -m | grep -i selphy
+```
+
+Create the queue (replace URI/model with values from the commands above):
+
+```bash
+sudo lpadmin -x SELPHY_CP1500 2>/dev/null || true
+
+sudo lpadmin -p SELPHY_CP1500 -E \
+  -v 'usb://Canon/SELPHY%20CP1500?serial=REPLACE_ME' \
+  -m 'gutenprint.5.3://canon-selphy_cp1500/expert'
+
+sudo cupsenable SELPHY_CP1500
+sudo cupsaccept SELPHY_CP1500
+lpstat -t
+```
+
+Smoke test (use an existing `print.jpg`):
+
+```bash
+lp -d SELPHY_CP1500 -t "Photobooth print test" /path/to/print.jpg
+lpstat -o
+```
+
+
 ## 1.4 Verify USB sees the camera
 
 ```bash

@@ -109,7 +109,7 @@ Copy the example env file:
 ```bash
 sudo cp /opt/photobooth/deployment/photobooth.env.example /etc/photobooth.env
 sudo chown root:root /etc/photobooth.env
-sudo chmod 0644 /etc/photobooth.env
+sudo chmod 0600 /etc/photobooth.env
 ```
 
 Edit it:

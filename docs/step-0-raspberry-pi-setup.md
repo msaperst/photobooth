@@ -1,6 +1,7 @@
 # Step 0: Raspberry Pi Base Setup
 
-This document describes how to provision a **fresh Raspberry Pi** with Raspberry Pi OS, configure Wi‑Fi, and enable remote access.
+This document describes how to provision a **fresh Raspberry Pi** with Raspberry Pi OS, configure Wi‑Fi, and enable
+remote access.
 
 These steps apply whether:
 
@@ -19,19 +20,22 @@ These steps apply whether:
 
 3. In Raspberry Pi Imager:
 
-   * Choose **Raspberry Pi OS (32-bit)**
-   * Choose the SD card
+    * Choose **Raspberry Pi OS (64-bit)**
+    * Choose the SD card
 
 4. **Before writing**, open *Advanced Settings* (⚙️):
 
-   * Set hostname (e.g. `photobooth`)
-   * Enable SSH
-   * Set username/password
-   * Configure Wi‑Fi:
+    * Set hostname (e.g. `photobooth`)
+    * Enable SSH
+    * Set username/password
+    * Configure Wi‑Fi:
 
-     * SSID
-     * Password
-     * Country
+        * SSID
+        * Password
+        * Country
+
+> _**NOTE**_: It's OK to skip WiFi setup because [Pi will be
+> configured as AP in next step](step-1-raspberry-pi-configure.md#19-configure-raspberry-pi-as-wifi-access-point-ap)
 
 5. Write the image and eject the SD card
 
@@ -131,8 +135,16 @@ ping -c 3 google.com
 
 * Raspberry Pi OS is used for maximum compatibility with:
 
-  * gphoto2
-  * USB camera access
-  * CUPS printing
+    * gphoto2
+    * USB camera access
+    * CUPS printing
 * Containerization is intentionally avoided at this stage
 * Later steps will configure the Pi as a **Wi‑Fi access point** for offline events
+
+Verify you are on 64-bit (required for SELPHY printing):
+
+```bash
+uname -m
+```
+
+Expected: `aarch64`
