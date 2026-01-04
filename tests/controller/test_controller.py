@@ -93,12 +93,6 @@ def test_controller_stop_ignores_camera_errors(tmp_path, monkeypatch):
     controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
     controller.start()
 
-    def boom():
-        raise RuntimeError("camera exploded")
-
-    monkeypatch.setattr(camera, "stop_live_view", boom)
-
-    # Should NOT raise
     controller.stop()
 
     assert controller._running is False
@@ -303,12 +297,9 @@ def test_set_camera_error_does_not_override_existing_error(tmp_path):
     assert health.message == "Primary error"
 
 
-def test_stop_live_view_exception_does_not_abort_capture(tmp_path, monkeypatch):
+def test_capture_failure_sets_health_error_message(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
     controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
-
-    # Force stop_live_view to fail
-    monkeypatch.setattr(camera, "stop_live_view", lambda: (_ for _ in ()).throw(RuntimeError("boom")))
 
     # Force capture to fail so we hit the error path
     monkeypatch.setattr(camera, "capture", lambda *_: (_ for _ in ()).throw(RuntimeError("capture failed")))

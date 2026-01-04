@@ -131,6 +131,30 @@ ping -c 3 google.com
 
 ---
 
+---
+
+## 0.X Clone the repo (required to run Step 1/2 scripts)
+
+The Step 1 and Step 2 automation scripts live in the repo under `deployment/scripts/`.
+Clone the repo early so you can run those scripts during provisioning.
+
+```bash
+sudo apt update
+sudo apt install -y git
+sudo mkdir -p /opt/photobooth
+sudo chown -R $USER:$USER /opt/photobooth
+
+cd /opt/photobooth
+git clone https://github.com/msaperst/photobooth.git .
+git checkout main
+git pull
+```
+
+You can now run:
+
+- `sudo /opt/photobooth/deployment/scripts/step1_provision_pi.sh`
+- `sudo /opt/photobooth/deployment/scripts/step2_deploy_app.sh`
+
 ## Notes
 
 * Raspberry Pi OS is used for maximum compatibility with:
@@ -140,11 +164,3 @@ ping -c 3 google.com
     * CUPS printing
 * Containerization is intentionally avoided at this stage
 * Later steps will configure the Pi as a **Wi‑Fi access point** for offline events
-
-Verify you are on 64-bit (required for SELPHY printing):
-
-```bash
-uname -m
-```
-
-Expected: `aarch64`

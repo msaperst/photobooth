@@ -64,9 +64,6 @@ class PhotoboothController:
     # How often to poll camera connectivity when idle/ready (avoid blocking the controller loop)
     CAMERA_POLL_INTERVAL = 1.0  # seconds
 
-    # How long live view must be failing (while idle/ready) before surfacing an error
-    LIVE_VIEW_ERROR_AFTER = 2.5  # seconds
-
     # How often to attempt recovery when unhealthy (camera/printer off/unplugged)
     RECOVERY_ATTEMPT_INTERVAL = 2.0  # seconds
 
@@ -164,10 +161,6 @@ class PhotoboothController:
 
     def stop(self):
         self._running = False
-        try:
-            self.camera.stop_live_view()
-        except Exception:
-            pass
 
     # ---------- Public API ----------
 
@@ -311,8 +304,8 @@ class PhotoboothController:
         # READY_FOR_PHOTO is included so we can surface a disconnect before the operator presses
         # the button, but we debounce to avoid transient gphoto2 slowness flashing errors.
         if self.state not in (
-            ControllerState.IDLE,
-            ControllerState.READY_FOR_PHOTO,
+                ControllerState.IDLE,
+                ControllerState.READY_FOR_PHOTO,
         ):
             return
 
