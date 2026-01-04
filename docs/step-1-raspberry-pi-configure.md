@@ -49,12 +49,18 @@ Install the basic dependencies
 sudo apt update
 sudo apt upgrade -y
 sudo apt install -y \
+  git \
   gphoto2 \
   libgphoto2-6t64 \
-  libgphoto2-dev \
   libusb-1.0-0 \
   usbutils \
-  git
+  cups \
+  cups-client \
+  cups-filters \
+  avahi-daemon \
+  avahi-utils \
+  python3-venv \
+  python3-pip
 ```
 
 Verify versions:

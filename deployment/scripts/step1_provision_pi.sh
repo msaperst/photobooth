@@ -1,11 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-
-ARCH="$(uname -m || true)"
-if [[ "${ARCH}" != "aarch64" ]]; then
-  echo "WARN: Detected architecture: ${ARCH}. For SELPHY printing, use Raspberry Pi OS 64-bit (aarch64)."
-fi
 # Step 1 provisioning: OS deps + user/group setup.
 # Safe to re-run.
 
@@ -20,15 +15,16 @@ apt-get upgrade -y
 
 # Keep this intentionally minimal and explicit.
 apt-get install -y \
-  cups \
-  cups-client \
-  printer-driver-gutenprint \
-  curl \
   git \
   gphoto2 \
   libgphoto2-6t64 \
   libusb-1.0-0 \
   usbutils \
+  cups \
+  cups-client \
+  cups-filters \
+  avahi-daemon \
+  avahi-utils \
   python3-venv \
   python3-pip
 
@@ -102,37 +98,6 @@ if ! command -v nmcli >/dev/null 2>&1; then
 fi
 
 # Recreate the AP connection deterministically (nmcli behavior varies by distro/version).
-
-echo "==> Setting up SELPHY CP1500 printer queue (if connected)"
-systemctl enable cups
-systemctl restart cups
-
-PRINTER_URI="$(lpinfo -v 2>/dev/null | awk '/usb:\/\/Canon\/SELPHY/ {print $2; exit}')"
-if [[ -n "${PRINTER_URI}" ]]; then
-  echo "    Found SELPHY URI: ${PRINTER_URI}"
-  MODEL="$(lpinfo -m | awk 'BEGIN{IGNORECASE=1} /selphy/ && /cp1500/ {print $1; exit}')"
-  if [[ -z "${MODEL}" ]]; then
-    MODEL="$(lpinfo -m | awk 'BEGIN{IGNORECASE=1} /selphy/ && /cp1300/ {print $1; exit}')"
-  fi
-  if [[ -z "${MODEL}" ]]; then
-    MODEL="$(lpinfo -m | awk 'BEGIN{IGNORECASE=1} /selphy/ && /cp1200/ {print $1; exit}')"
-  fi
-
-  if [[ -z "${MODEL}" ]]; then
-    echo "    WARN: Could not find SELPHY Gutenprint model (lpinfo -m | grep -i selphy)."
-  else
-    echo "    Using model: ${MODEL}"
-    lpadmin -x SELPHY_CP1500 >/dev/null 2>&1 || true
-    lpadmin -p SELPHY_CP1500 -E -v "${PRINTER_URI}" -m "${MODEL}"
-    cupsenable SELPHY_CP1500
-    cupsaccept SELPHY_CP1500
-    lpstat -t || true
-  fi
-else
-  echo "    NOTE: SELPHY not detected. Plug it in and re-run step1_provision_pi.sh to create the queue."
-fi
-
-
 if nmcli -t -f NAME connection show | grep -qx "photobooth-ap"; then
   echo "==> Removing existing NetworkManager connection: photobooth-ap"
   nmcli connection delete photobooth-ap
@@ -153,8 +118,69 @@ nmcli connection up photobooth-ap
 echo "==> AP configured. Verify:"
 echo "    - SSID visible: Photobooth"
 echo "    - Pi AP IP: 192.168.4.1"
-echo "    - Web UI: http://192.168.4.1:5000"
 echo "    - SSH: ssh photobooth@192.168.4.1"
+
+
+echo
+echo "==> Enabling CUPS + mDNS (for SELPHY Wi-Fi / AirPrint discovery)..."
+systemctl enable --now cups avahi-daemon
+
+# cups-browsed can auto-create queues and implicit classes, which gets confusing.
+# We manage the SELPHY queue explicitly.
+if systemctl list-unit-files | awk '{print $1}' | grep -qx 'cups-browsed.service'; then
+  systemctl stop cups-browsed || true
+  systemctl disable cups-browsed || true
+fi
+
+if [[ "${PHOTOBOOTH_SKIP_PRINTER:-}" != "1" ]]; then
+  echo
+  echo "==> Printer setup (Canon SELPHY CP1500 over Wi-Fi / AirPrint)"
+  echo "    This step requires you to connect the SELPHY to the Photobooth AP."
+  echo
+  echo "    On the printer:"
+  echo "      Wi‑Fi settings -> Connection Settings -> Other -> Via wireless router"
+  echo "      Select SSID: Photobooth"
+  echo
+  read -r -p "Press ENTER once the printer shows as connected... " _
+
+  echo "==> Waiting for SELPHY to appear via DNS-SD..."
+  for _ in {1..30}; do
+    if lpinfo -v 2>/dev/null | grep -q 'dnssd://Canon%20SELPHY%20CP1500\._ipp\._tcp\.local/'; then
+      break
+    fi
+    sleep 2
+  done
+
+  if ! lpinfo -v 2>/dev/null | grep -q 'dnssd://Canon%20SELPHY%20CP1500\._ipp\._tcp\.local/'; then
+    echo "ERROR: SELPHY not discovered via DNS-SD."
+    echo "  - Confirm the printer is connected to the Photobooth SSID"
+    echo "  - Power cycle the printer"
+    echo "  - Run: avahi-browse -avtr | grep -i selphy"
+    exit 1
+  fi
+
+  echo "==> Creating CUPS queue: Canon_SELPHY_CP1500"
+  lpadmin \
+    -p Canon_SELPHY_CP1500 \
+    -E \
+    -v "dnssd://Canon%20SELPHY%20CP1500._ipp._tcp.local/" \
+    -m everywhere
+  cupsenable Canon_SELPHY_CP1500
+  cupsaccept Canon_SELPHY_CP1500
+
+  echo "==> Setting defaults (Postcard, color, one-sided)"
+  lpoptions -p Canon_SELPHY_CP1500 \
+    -o media=jpn_hagaki_100x148mm \
+    -o print-color-mode=color \
+    -o sides=one-sided
+
+  echo "==> Quick queue sanity check (submits a HELD job then cancels; should NOT print)"
+  lp -d Canon_SELPHY_CP1500 -o job-hold-until=indefinite /etc/hosts >/dev/null
+  lpstat -o || true
+  cancel -a Canon_SELPHY_CP1500 || true
+  echo "==> Printer queue configured."
+fi
+
 echo "==> Done."
 echo "Next steps:"
 echo "  1) Reboot: say 'sudo reboot' (USB group changes require re-login)"

@@ -254,6 +254,7 @@ USB printing on the Canon SELPHY CP1500 is intentionally not supported:
 - Wi‑Fi printing recovers cleanly after Pi or printer reboots
 
 For reliability and maintainability, all production printing uses Wi‑Fi IPP Everywhere.
+
 ---
 
 ## Networking
