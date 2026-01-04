@@ -420,7 +420,30 @@ def test_printer_recovery_clears_health_and_retries_pending_print(tmp_path, monk
     # "Fix" printer
     printer.preflight_ok = True
 
-    # Trigger idle poll directly (deterministic)
+    # Make time deterministic so we can satisfy PRINTER_CLEAR_AFTER
+    t0 = 5000.0
+    monkeypatch.setattr("controller.controller.time.time", lambda: t0)
+
+    # Run print worker synchronously (deterministic)
+    class ImmediateThread:
+        def __init__(self, target, daemon):
+            self._target = target
+
+        def start(self):
+            self._target()
+
+    monkeypatch.setattr("controller.controller.threading.Thread",
+                        lambda *a, **k: ImmediateThread(k["target"], k["daemon"]))
+
+    # First healthy poll: starts ok-since timer, should NOT clear yet
+    controller._printer_poll_last_attempt = 0.0
+    controller._poll_printer_health_if_idle()
+    assert controller.get_health().level == HealthLevel.ERROR
+
+    # Second healthy poll after clear window: clears + kicks print draining
+    t1 = t0 + controller.PRINTER_CLEAR_AFTER + 0.1
+    monkeypatch.setattr("controller.controller.time.time", lambda: t1)
+    controller._printer_poll_last_attempt = 0.0
     controller._poll_printer_health_if_idle()
 
     # Should clear health and resume pending prints

@@ -925,7 +925,7 @@ def test_poll_printer_health_sets_error_when_reasons_present(tmp_path, monkeypat
     assert any("Paper tray may be empty" in s for s in instructions)
 
 
-def test_poll_printer_health_clears_printer_error_when_healthy_again(tmp_path, monkeypatch):
+def test_poll_printer_health_does_not_clear_printer_error_until_clear_after_window(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
     printer = HealthCheckPrinter(result={"reachable": True, "state": "idle", "reasons": []})
     controller = PhotoboothController(camera=camera, printer=printer, image_root=tmp_path)
@@ -936,7 +936,25 @@ def test_poll_printer_health_clears_printer_error_when_healthy_again(tmp_path, m
     assert controller.get_health().level == HealthLevel.ERROR
     assert controller._get_health_source() == HealthSource.PRINTER
 
-    monkeypatch.setattr("controller.controller.time.time", lambda: 5000.0)
+    t0 = 1000.0
+    monkeypatch.setattr("controller.controller.time.time", lambda: t0)
+    controller._poll_printer_health_if_idle()
+
+    # After one healthy poll, error should still be present (sticky/hysteresis)
+    assert controller.get_health().level == HealthLevel.ERROR
+    assert controller._get_health_source() == HealthSource.PRINTER
+
+    # Still within clear window -> still error
+    t1 = t0 + controller.PRINTER_CLEAR_AFTER - 0.5
+    controller._printer_poll_last_attempt = 0.0  # bypass poll interval throttle
+    monkeypatch.setattr("controller.controller.time.time", lambda: t1)
+    controller._poll_printer_health_if_idle()
+    assert controller.get_health().level == HealthLevel.ERROR
+
+    # Past clear window -> clears
+    t2 = t0 + controller.PRINTER_CLEAR_AFTER + 0.1
+    controller._printer_poll_last_attempt = 0.0
+    monkeypatch.setattr("controller.controller.time.time", lambda: t2)
     controller._poll_printer_health_if_idle()
 
     assert controller.get_health().level == HealthLevel.OK
@@ -1257,3 +1275,27 @@ def test_kick_print_worker_returns_when_no_pending_prints(tmp_path, monkeypatch)
     with controller._print_lock:
         assert controller._pending_prints == []
         assert controller._print_in_flight is False
+
+
+def test_poll_printer_health_returns_without_clearing_when_not_healthy_long_enough(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+    printer = HealthCheckPrinter(result={"reachable": True, "state": "idle", "reasons": []})
+    controller = PhotoboothController(camera=camera, printer=printer, image_root=tmp_path)
+    controller.state = ControllerState.IDLE
+
+    controller._set_printer_error("printer offline", reasons=[])
+    assert controller._get_health_source() == HealthSource.PRINTER
+
+    t0 = 2000.0
+    monkeypatch.setattr("controller.controller.time.time", lambda: t0)
+    controller._poll_printer_health_if_idle()
+
+    # force another poll attempt quickly
+    t1 = t0 + 0.1
+    controller._printer_poll_last_attempt = 0.0
+    monkeypatch.setattr("controller.controller.time.time", lambda: t1)
+    controller._poll_printer_health_if_idle()
+
+    # Must still be error because clear window not met
+    assert controller.get_health().level == HealthLevel.ERROR
+    assert controller._get_health_source() == HealthSource.PRINTER

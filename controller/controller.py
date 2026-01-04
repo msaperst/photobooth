@@ -70,6 +70,9 @@ class PhotoboothController:
     # How often to poll printer connectivity when idle/ready (avoid blocking the controller loop)
     PRINTER_POLL_INTERVAL = 2.0  # seconds
 
+    # How long the printer must be healthy for before clearing the error
+    PRINTER_CLEAR_AFTER = 10.0  # seconds
+
     # How often to attempt recovery when unhealthy (camera/printer off/unplugged)
     RECOVERY_ATTEMPT_INTERVAL = 2.0  # seconds
 
@@ -115,6 +118,8 @@ class PhotoboothController:
         # Printer
         self.printer = printer
         self._last_printer_recovery_attempt = 0.0
+        self._printer_poll_fail_since: float | None = None
+        self._printer_poll_ok_since: float | None = None
         self._print_lock = threading.Lock()
         self._print_in_flight = False
         self._pending_prints: list[tuple[Path, int]] = []
@@ -388,6 +393,7 @@ class PhotoboothController:
         )
 
     def _poll_printer_health_if_idle(self) -> None:
+        # Only poll printer health while fully idle (avoid interference with capture/processing).
         if self.state != ControllerState.IDLE:
             return
 
@@ -396,50 +402,63 @@ class PhotoboothController:
             return
         self._printer_poll_last_attempt = now
 
-        health = None
+        # Health check is optional (printers may not implement it yet).
         try:
             health = self.printer.health_check()
         except Exception:
             health = None
 
         if not health:
-            return  # printer does not support health checks
+            return
 
-        if not health["reachable"]:
+        reachable = bool(health.get("reachable"))
+        reasons = list(health.get("reasons") or [])
+
+        # --- Unreachable (debounced) ---
+        if not reachable:
+            # Any failure resets the "healthy since" window.
+            self._printer_poll_ok_since = None
+
+            # Start or continue failure window.
             if self._printer_poll_fail_since is None:
                 self._printer_poll_fail_since = now
                 return
+
+            # Still within debounce window -> do nothing (prevents transient flaps).
             if now - self._printer_poll_fail_since < self.PRINTER_ERROR_AFTER:
                 return
 
-            self._set_printer_error(
-                "Printer is not reachable",
-                reasons=[],
-            )
+            # Sustained failure -> surface sticky printer error.
+            self._set_printer_error("Printer is not reachable", reasons=[])
             return
 
-        # Reachable
+        # --- Reachable ---
+        # Reaching the printer resets failure window.
         self._printer_poll_fail_since = None
 
-        reasons = health.get("reasons", [])
+        # If printer reports explicit reasons, surface them as hints.
         if reasons:
-            self._set_printer_error(
-                "Printer reported a problem",
-                reasons=reasons,
-            )
+            self._printer_poll_ok_since = None
+            self._set_printer_error("Printer reported a problem", reasons=reasons)
             return
 
-        # Healthy again → clear PRINTER error
-        cleared = False
+        # Healthy (reachable + no reasons)
+        if self._printer_poll_ok_since is None:
+            self._printer_poll_ok_since = now
+
+        # Clear PRINTER error only after sustained healthy window (prevents red flash).
         with self._health_lock:
-            if self._health_source == HealthSource.PRINTER:
-                self._health_source = None
-                self._health_status = HealthStatus.ok()
-                cleared = True
+            if self._health_source != HealthSource.PRINTER:
+                return
+
+            if now - self._printer_poll_ok_since < self.PRINTER_CLEAR_AFTER:
+                return
+
+            self._health_source = None
+            self._health_status = HealthStatus.ok()
 
         # If we just recovered and there are pending prints, resume draining.
-        if cleared:
-            self._kick_print_worker_if_needed()
+        self._kick_print_worker_if_needed()
 
     def _get_health_source(self) -> Optional[HealthSource]:
         with self._health_lock:
