@@ -85,6 +85,7 @@ If it is not, reconnect the printer to **Photobooth**:
     3. Prints come out automatically
 
 No action is needed between guests.
+> _Note_: Printing may start a few seconds after the last photo.
 
 ---
 
