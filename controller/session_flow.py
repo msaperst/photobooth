@@ -34,7 +34,21 @@ class SessionFlow:
         with self._controller._state_lock:
             self._controller.session_active = True
             self._controller.photos_taken = 0
-            self._controller.total_photos = payload.get("image_count", 3)
+            self._controller.total_photos = self._controller.TOTAL_PHOTOS_PER_SESSION
+            raw_print_count = payload.get("print_count", 1)
+            try:
+                print_count = int(raw_print_count)
+            except (TypeError, ValueError):
+                print_count = 1  # default to one print
+
+            # Clamp to a sane range to prevent runaway jobs later.
+            # UI intends 1..4 (for 2/4/6/8 strips -> 1/2/3/4 print sheets).
+            if print_count < 1:
+                print_count = 1
+            if print_count > 4:
+                print_count = 4
+            self._controller.print_count = print_count
+
             from controller.controller import ControllerState  # local import
             self._controller._captured_image_paths = []
             self._controller._session_storage = SessionStorage(
@@ -154,10 +168,25 @@ class SessionFlow:
                 self._controller.state = ControllerState.IDLE
             return
 
+        except Exception as e:
+            self._controller._set_processing_error(
+                f"Unexpected processing error: {type(e).__name__}: {e}"
+            )
+            with self._controller._state_lock:
+                self._controller.session_active = False
+                self._controller.state = ControllerState.IDLE
+            return
+
+        # Start printing asynchronously (do not block UI).
         with self._controller._state_lock:
             self._controller.state = ControllerState.PRINTING
-        time.sleep(1)
 
+        self._controller._start_print_job(
+            storage.print_path,
+            copies=self._controller.print_count,
+        )
+
+        # Return to IDLE immediately so the next guests can start.
         with self._controller._state_lock:
             self._controller.session_active = False
             self._controller.state = ControllerState.IDLE

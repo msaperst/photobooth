@@ -1,6 +1,7 @@
 # Step 0: Raspberry Pi Base Setup
 
-This document describes how to provision a **fresh Raspberry Pi** with Raspberry Pi OS, configure Wi‑Fi, and enable remote access.
+This document describes how to provision a **fresh Raspberry Pi** with Raspberry Pi OS, configure Wi‑Fi, and enable
+remote access.
 
 These steps apply whether:
 
@@ -19,19 +20,22 @@ These steps apply whether:
 
 3. In Raspberry Pi Imager:
 
-   * Choose **Raspberry Pi OS (32-bit)**
-   * Choose the SD card
+    * Choose **Raspberry Pi OS (64-bit)**
+    * Choose the SD card
 
 4. **Before writing**, open *Advanced Settings* (⚙️):
 
-   * Set hostname (e.g. `photobooth`)
-   * Enable SSH
-   * Set username/password
-   * Configure Wi‑Fi:
+    * Set hostname (e.g. `photobooth`)
+    * Enable SSH
+    * Set username/password
+    * Configure Wi‑Fi:
 
-     * SSID
-     * Password
-     * Country
+        * SSID
+        * Password
+        * Country
+
+> _**NOTE**_: It's OK to skip WiFi setup because [Pi will be
+> configured as AP in next step](step-1-raspberry-pi-configure.md#19-configure-raspberry-pi-as-wifi-access-point-ap)
 
 5. Write the image and eject the SD card
 
@@ -127,12 +131,43 @@ ping -c 3 google.com
 
 ---
 
+---
+
+## 0.X Clone the repo (required to run Step 1/2 scripts)
+
+The Step 1 and Step 2 automation scripts live in the repo under `deployment/scripts/`.
+Clone the repo early so you can run those scripts during provisioning.
+
+```bash
+sudo apt update
+sudo apt install -y git
+sudo mkdir -p /opt/photobooth
+sudo chown -R $USER:$USER /opt/photobooth
+
+cd /opt/photobooth
+git clone https://github.com/msaperst/photobooth.git .
+git checkout main
+git pull
+```
+
+You can now run:
+
+- `sudo /opt/photobooth/deployment/scripts/step1_provision_pi.sh`
+- `sudo /opt/photobooth/deployment/scripts/step2_deploy_app.sh`
+
 ## Notes
 
 * Raspberry Pi OS is used for maximum compatibility with:
 
-  * gphoto2
-  * USB camera access
-  * CUPS printing
+    * gphoto2
+    * USB camera access
+    * CUPS printing
 * Containerization is intentionally avoided at this stage
 * Later steps will configure the Pi as a **Wi‑Fi access point** for offline events
+
+Desktop vs Lite (bloat / security):
+
+- For booth usage, Raspberry Pi OS Lite (64-bit) is usually sufficient and avoids installing browsers/media apps.
+- Avoid aggressively removing desktop packages on a running system unless you have a reason; it can introduce
+  instability.
+- Prefer: choose the right base image up front, then disable services we don't use.

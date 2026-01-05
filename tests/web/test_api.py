@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 from flask import json
 
+from tests.controller.test_controller import NoOpPrinter
 from tests.fakes.fake_camera import FakeCamera
 from web.app import create_app
 
@@ -13,7 +14,7 @@ def client(tmp_path):
     logo_path = tmp_path / "logo.png"
     # Minimal valid PNG header so PIL can open if needed later
     logo_path.write_bytes(b"\x89PNG\r\n\x1a\n")
-    app = create_app(camera=camera, image_root=tmp_path, album_code="TESTALBUM", logo_path=logo_path)
+    app = create_app(camera=camera, printer=NoOpPrinter(), image_root=tmp_path, album_code="TESTALBUM", logo_path=logo_path)
     app.config["TESTING"] = True
     return app.test_client()
 

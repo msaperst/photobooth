@@ -37,6 +37,16 @@ Notes:
 
 ---
 
+
+Ownership note (/opt/photobooth):
+
+- If you cloned the repo earlier as a different user (e.g., `root`), Step 2 may fail when running as `photobooth`.
+- Fix by making `photobooth` the owner:
+
+```bash
+sudo chown -R photobooth:photobooth /opt/photobooth
+```
+
 ## 2.2 Deploy code from GitHub
 
 If /opt does not exist or is restricted, use /srv instead. These docs assume /opt/photobooth.
@@ -109,7 +119,7 @@ Copy the example env file:
 ```bash
 sudo cp /opt/photobooth/deployment/photobooth.env.example /etc/photobooth.env
 sudo chown root:root /etc/photobooth.env
-sudo chmod 0644 /etc/photobooth.env
+sudo chmod 0600 /etc/photobooth.env
 ```
 
 Edit it:

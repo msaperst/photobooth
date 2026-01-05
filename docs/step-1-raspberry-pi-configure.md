@@ -5,6 +5,10 @@
 >
 > The script encodes the steps below exactly. Manual execution is still documented for clarity and debugging.
 
+Prerequisite:
+
+- Clone the repo first (Step 0) so the scripts exist locally under `/opt/photobooth/deployment/scripts/`.
+
 # Step 1: Configure The Raspberry Pi
 
 ---
@@ -45,12 +49,18 @@ Install the basic dependencies
 sudo apt update
 sudo apt upgrade -y
 sudo apt install -y \
+  git \
   gphoto2 \
   libgphoto2-6t64 \
-  libgphoto2-dev \
   libusb-1.0-0 \
   usbutils \
-  git
+  cups \
+  cups-client \
+  cups-filters \
+  avahi-daemon \
+  avahi-utils \
+  python3-venv \
+  python3-pip
 ```
 
 Verify versions:
@@ -63,7 +73,7 @@ You want libgphoto2 ≥ 2.5.x (Bookworm ships newer).
 
 ---
 
-## 1.2 Fix USB Permissions
+## 1.2 Camera Setup (Nikon D750)
 
 ### 1.2.1 Install / verify gphoto udev rules
 
@@ -101,7 +111,7 @@ plugdev video dialout
 
 ---
 
-## 1.3 Camera physical setup (important)
+### 1.2.3 Camera physical setup (important)
 
 Before plugging USB in, set these on the camera itself:
 
@@ -125,7 +135,7 @@ Now plug USB → Pi.
 
 ---
 
-## 1.4 Verify USB sees the camera
+### 1.2.4 Verify USB sees the camera
 
 ```bash
 lsusb
@@ -143,11 +153,9 @@ If not:
 - Power issue
 - Camera not on
 
-Stop here if missing.
-
 ---
 
-## 1.5 Verify gphoto detection (no sudo)
+### 1.2.5 Verify gphoto detection (no sudo)
 
 ```bash
 gphoto2 --auto-detect
@@ -165,7 +173,7 @@ If this fails → permissions not correct → go back to 1.2
 
 ---
 
-## 1.6 Verify camera communication
+### 1.2.6 Verify camera communication
 
 ```bash
 gphoto2 --summary
@@ -187,7 +195,7 @@ If this fails:
 *If you get an error about not being able to claim the USB device*,
 this is the #1 most common gphoto2 failure on desktop Linux.
 
-Run:
+If USB claim errors occur:
 
 ```bash
 gsettings set org.gnome.desktop.media-handling automount false
@@ -213,7 +221,7 @@ systemctl --user stop gvfs-gphoto2-volume-monitor.service
 
 ---
 
-## 1.7 Test capture (critical checkpoint)
+### 1.2.7 Test capture (critical checkpoint)
 
 Run:
 
@@ -233,22 +241,18 @@ Expected behavior:
 Verify:
 
 ```bash
-ls -lh *.jpg
+ls -lh test_*.*
 ```
 
 If this works → 🎉 camera integration at OS level is DONE
 
----
-
-## 1.8 Clean up test files
-
 ```bash
-rm test_*.jpg
+rm test_*.*
 ```
 
 ---
 
-## 1.9 Configure Raspberry Pi as Wi‑Fi Access Point (AP)
+## 1.3 Configure Raspberry Pi as Wi‑Fi Access Point (AP)
 
 This configures the Pi to broadcast an **open (password‑free)** Wi‑Fi network for guests and the iPad to connect to at
 events.
@@ -268,7 +272,7 @@ Safety:
 - **Do not run these steps over Wi‑Fi.** You will disconnect `wlan0` from client mode.
 - Ensure you are connected via **Ethernet** (recommended) or have local console access.
 
-### 1.9.1 Verify current network state
+### 1.3.1 Verify current network state
 
 ```bash
 nmcli device status
@@ -279,14 +283,14 @@ Expected during setup:
 - `eth0` is **connected**
 - `wlan0` is currently connected to your home Wi‑Fi (client mode) OR disconnected
 
-### 1.9.2 Install required package
+### 1.3.2 Install required package
 
 ```bash
 sudo apt update
 sudo apt install -y hostapd
 ```
 
-### 1.9.3 Ensure standalone dnsmasq is NOT installed (critical)
+### 1.3.3 Ensure standalone dnsmasq is NOT installed (critical)
 
 ```bash
 sudo systemctl stop dnsmasq || true
@@ -294,13 +298,13 @@ sudo systemctl disable dnsmasq || true
 sudo apt purge -y dnsmasq
 ```
 
-### 1.9.4 Create the AP connection (NetworkManager)
+### 1.3.4 Create the AP connection (NetworkManager)
 
 ```bash
 sudo nmcli connection add   type wifi   ifname wlan0   con-name photobooth-ap   autoconnect yes   ssid Photobooth
 ```
 
-### 1.9.5 Configure AP mode + DHCP + static AP IP
+### 1.3.5 Configure AP mode + DHCP + static AP IP
 
 ```bash
 sudo nmcli connection modify photobooth-ap 802-11-wireless.mode ap
@@ -309,7 +313,7 @@ sudo nmcli connection modify photobooth-ap ipv4.method shared
 sudo nmcli connection modify photobooth-ap ipv4.addresses 192.168.4.1/24
 ```
 
-### 1.9.6 Bring the AP up
+### 1.3.6 Bring the AP up
 
 ```bash
 sudo nmcli connection up photobooth-ap
@@ -321,18 +325,163 @@ Verify:
 ip addr show wlan0
 ```
 
-### 1.9.7 Verify from a client
+### 1.3.7 Verify from a client
 
 - Connect to Wi‑Fi network: `Photobooth`
-- Open: `http://192.168.4.1:5000`
-- Optional SSH:
+- SSH:
 
 ```bash
 ssh photobooth@192.168.4.1
 ```
 
-### 1.9.8 Reboot persistence test
+Ensure you can connect
+
+### 1.3.8 Reboot persistence test
 
 ```bash
 sudo reboot
 ```
+
+Ensure you can still connect
+
+## 1.4 Printer Setup (Canon SELPHY CP1500)
+
+The photobooth uses **driverless IPP Everywhere printing over Wi-Fi**.
+
+The SELPHY **does not connect over USB**.  
+Instead, the printer joins the Raspberry Pi’s Wi-Fi Access Point and is discovered automatically by CUPS via mDNS.
+
+This approach is:
+
+- Reliable
+- Reboot-safe
+- Driverless
+- Supported by Canon firmware
+- Fully compatible with the Pi running as an AP
+
+---
+
+### 1.4.1 Prepare the printer (on the device)
+
+On the Canon SELPHY CP1500 touchscreen:
+
+1. Power on the printer
+2. Open **Settings**
+3. Go to **Wi‑Fi Settings**
+4. Select **Connection Settings**
+5. Choose **Other**
+6. Select **Via Wireless Router**
+7. From the network list, select:
+   Photobooth
+8. Confirm connection
+
+When complete, the printer will show as connected to the Photobooth network.
+
+Recommended printer settings:
+
+- Disable Power Save / Auto Power Off
+- Leave paper size and color defaults unchanged (controlled by CUPS)
+
+---
+
+### 1.4.2 Verify network visibility on the Pi
+
+```bash
+ip neigh | grep 192.168.4.
+```
+
+Expected:
+
+- Printer IP visible on wlan0 (e.g. 192.168.4.205)
+
+Verify mDNS advertisement:
+
+```bash
+avahi-browse -avtr | grep -i selphy
+```
+
+Expected services:
+
+- Internet Printer
+- Secure Internet Printer
+- Web Site
+- _canon-cpp-disc._udp
+
+---
+
+### 1.4.3 Add the printer to CUPS (driverless)
+
+Confirm discovery:
+
+```bash
+sudo lpinfo -v | grep ipp
+```
+
+Expected entry:
+dnssd://Canon%20SELPHY%20CP1500._ipp._tcp.local/
+
+Add printer:
+
+```bash
+sudo lpadmin \
+  -p Canon_SELPHY_CP1500 \
+  -E \
+  -v "dnssd://Canon%20SELPHY%20CP1500._ipp._tcp.local/" \
+  -m everywhere
+```
+
+Enable and accept jobs:
+
+```bash
+sudo cupsenable Canon_SELPHY_CP1500
+sudo cupsaccept Canon_SELPHY_CP1500
+```
+
+Set defaults:
+
+```bash
+sudo lpoptions -p Canon_SELPHY_CP1500 \
+  -o media=jpn_hagaki_100x148mm \
+  -o print-color-mode=color \
+  -o sides=one-sided
+```
+
+---
+
+### 1.4.4 Verify printer state
+
+```bash
+lpstat -p
+```
+
+Expected:
+printer Canon_SELPHY_CP1500 is idle. enabled
+
+---
+
+### 1.4.5 Non-destructive queue test
+
+```bash
+lp -d Canon_SELPHY_CP1500 /etc/hosts
+sudo cancel -a Canon_SELPHY_CP1500
+```
+
+Verifies:
+
+- Job submission
+- Queue handling
+- Cancellation
+- Printer communication
+
+---
+
+### 1.4.6 Real print test
+
+```bash
+lp -d Canon_SELPHY_CP1500 \
+  -o media=jpn_hagaki_100x148mm \
+  -o fit-to-page \
+  /path/to/print.jpg
+```
+
+Printing is now production-ready.

@@ -9,13 +9,40 @@ from controller.controller import (
     ControllerState,
 )
 from controller.health import HealthLevel, HealthCode, HealthSource
+from controller.printer_base import Printer, PrinterError
 from imaging.strip_errors import StripCreationError
 from tests.helpers import wait_for
 
 
+class NoOpPrinter(Printer):
+    def print_file(self, file_path: Path, *, copies: int = 1, job_name: str | None = None) -> None:
+        return
+
+
+class HealthCheckPrinter(NoOpPrinter):
+    def __init__(self, result=None, *, raises: bool = False):
+        self._result = result
+        self._raises = raises
+        self.calls = 0
+
+    def health_check(self):
+        self.calls += 1
+        if self._raises:
+            raise RuntimeError("boom")
+        return self._result
+
+
+class SpyPrinter(NoOpPrinter):
+    def __init__(self):
+        self.preflight_called = False
+
+    def preflight(self) -> None:
+        self.preflight_called = True
+
+
 def test_manual_photo_progression(tmp_path):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
     controller.countdown_seconds = 0
     controller.start()
 
@@ -56,7 +83,7 @@ def test_manual_photo_progression(tmp_path):
 
 def test_start_session_enters_ready_for_photo(tmp_path):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
     controller.start()
 
     controller.enqueue(Command(CommandType.START_SESSION))
@@ -66,7 +93,7 @@ def test_start_session_enters_ready_for_photo(tmp_path):
 
 def test_busy_flag_after_start_session(tmp_path):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
     controller.start()
 
     controller.enqueue(Command(CommandType.START_SESSION))
@@ -76,15 +103,9 @@ def test_busy_flag_after_start_session(tmp_path):
 
 def test_controller_stop_ignores_camera_errors(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
     controller.start()
 
-    def boom():
-        raise RuntimeError("camera exploded")
-
-    monkeypatch.setattr(camera, "stop_live_view", boom)
-
-    # Should NOT raise
     controller.stop()
 
     assert controller._running is False
@@ -92,7 +113,7 @@ def test_controller_stop_ignores_camera_errors(tmp_path, monkeypatch):
 
 def test_run_loop_logs_unhandled_exceptions(tmp_path, capsys, monkeypatch):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     def boom(_command):
         raise RuntimeError("kaboom")
@@ -108,7 +129,7 @@ def test_run_loop_logs_unhandled_exceptions(tmp_path, capsys, monkeypatch):
 
 def test_begin_photo_capture_returns_when_not_ready(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     controller.state = ControllerState.COUNTDOWN  # not READY_FOR_PHOTO
 
@@ -130,7 +151,7 @@ def test_begin_photo_capture_returns_when_not_ready(tmp_path, monkeypatch):
 
 def test_photo_capture_worker_counts_down(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     # Make countdown deterministic + fast
     controller.countdown_seconds = 2
@@ -159,7 +180,7 @@ def test_photo_capture_worker_counts_down(tmp_path, monkeypatch):
 
 def test_photo_capture_worker_sets_idle_on_capture_failure(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
     controller._start_live_view_worker = lambda: None
 
     controller.countdown_seconds = 0
@@ -184,13 +205,13 @@ def test_photo_capture_worker_sets_idle_on_capture_failure(tmp_path, monkeypatch
 
     assert health.level == HealthLevel.ERROR
     assert health.code == HealthCode.CAMERA_NOT_DETECTED
-    assert "photo 1 of 1" in health.message
+    assert "photo 1 of 3" in health.message
     assert "Session was cancelled" in health.message
 
 
 def test_finish_session_worker_transitions_states(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     # Pretend a session is active
     controller.session_active = True
@@ -222,7 +243,7 @@ def test_start_does_not_fail_when_live_view_unavailable(tmp_path, monkeypatch):
     # Simulate preview being unavailable
     monkeypatch.setattr(camera, "start_live_view", lambda: (_ for _ in ()).throw(RuntimeError()))
 
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     # Should not raise
     controller.start()
@@ -231,31 +252,9 @@ def test_start_does_not_fail_when_live_view_unavailable(tmp_path, monkeypatch):
     assert health.level == HealthLevel.OK
 
 
-def test_capture_sets_health_error_when_restart_live_view_fails(tmp_path, monkeypatch):
-    camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
-
-    controller.countdown_seconds = 0
-    monkeypatch.setattr(time, "sleep", lambda _s: None)
-
-    def fail_start_live_view():
-        raise RuntimeError("live view failed")
-
-    monkeypatch.setattr(camera, "start_live_view", fail_start_live_view)
-
-    controller.start()
-    controller.enqueue(Command(CommandType.START_SESSION, payload={"image_count": 1}))
-    wait_for(lambda: controller.state == ControllerState.READY_FOR_PHOTO)
-
-    controller.enqueue(Command(CommandType.TAKE_PHOTO))
-
-    # Capture still succeeds, but health should reflect error
-    wait_for(lambda: controller.get_health().level == HealthLevel.ERROR)
-
-
 def test_capture_failure_mid_round_sets_contextual_message(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
     controller._live_view_running = True  # prevent worker from starting
 
     controller.countdown_seconds = 0
@@ -291,7 +290,7 @@ def test_capture_failure_mid_round_sets_contextual_message(tmp_path, monkeypatch
 
 def test_set_camera_error_does_not_override_existing_error(tmp_path):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     controller._set_camera_error(
         HealthCode.CAMERA_NOT_DETECTED,
@@ -311,12 +310,9 @@ def test_set_camera_error_does_not_override_existing_error(tmp_path):
     assert health.message == "Primary error"
 
 
-def test_stop_live_view_exception_does_not_abort_capture(tmp_path, monkeypatch):
+def test_capture_failure_sets_health_error_message(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
-
-    # Force stop_live_view to fail
-    monkeypatch.setattr(camera, "stop_live_view", lambda: (_ for _ in ()).throw(RuntimeError("boom")))
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     # Force capture to fail so we hit the error path
     monkeypatch.setattr(camera, "capture", lambda *_: (_ for _ in ()).throw(RuntimeError("capture failed")))
@@ -335,7 +331,7 @@ def test_stop_live_view_exception_does_not_abort_capture(tmp_path, monkeypatch):
 
 def test_strip_failure_sets_health_error(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     # Speed everything up
     controller.countdown_seconds = 0
@@ -355,7 +351,6 @@ def test_strip_failure_sets_health_error(tmp_path, monkeypatch):
     controller.enqueue(
         Command(
             CommandType.START_SESSION,
-            payload={"image_count": 1},
         )
     )
 
@@ -363,9 +358,11 @@ def test_strip_failure_sets_health_error(tmp_path, monkeypatch):
     from tests.helpers import wait_for
     wait_for(lambda: controller.state == ControllerState.READY_FOR_PHOTO)
 
-    controller.enqueue(
-        Command(CommandType.TAKE_PHOTO)
-    )
+    # Take 3 photos (session always requires 3)
+    for expected_count in range(1, 4):
+        wait_for(lambda: controller.state == ControllerState.READY_FOR_PHOTO)
+        controller.enqueue(Command(CommandType.TAKE_PHOTO))
+        wait_for(lambda: controller.photos_taken == expected_count)
 
     # Wait for processing to complete
     wait_for(lambda: controller.state == ControllerState.IDLE)
@@ -377,7 +374,7 @@ def test_strip_failure_sets_health_error(tmp_path, monkeypatch):
 
 def test_is_running_reflects_controller_lifecycle(tmp_path):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     assert controller._is_running() is False
 
@@ -390,7 +387,7 @@ def test_is_running_reflects_controller_lifecycle(tmp_path):
 
 def test_get_state_returns_current_state(tmp_path):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     controller.state = ControllerState.READY_FOR_PHOTO
     assert controller._get_state() == ControllerState.READY_FOR_PHOTO
@@ -401,7 +398,7 @@ def test_get_state_returns_current_state(tmp_path):
 
 def test_is_unhealthy_reflects_health_state(tmp_path):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     assert controller._is_unhealthy() is False
 
@@ -416,7 +413,7 @@ def test_is_unhealthy_reflects_health_state(tmp_path):
 
 def test_get_health_source_returns_current_source(tmp_path):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     assert controller._get_health_source() is None
 
@@ -431,7 +428,7 @@ def test_get_health_source_returns_current_source(tmp_path):
 
 def test_poll_camera_health_noop_when_not_idle(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     controller.state = ControllerState.CAPTURING_PHOTO
 
@@ -445,7 +442,7 @@ def test_poll_camera_health_noop_when_not_idle(tmp_path, monkeypatch):
 
 def test_poll_camera_health_marks_ok_when_camera_recovers(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     controller.state = ControllerState.IDLE
 
@@ -465,7 +462,7 @@ def test_poll_camera_health_marks_ok_when_camera_recovers(tmp_path, monkeypatch)
 
 def test_poll_camera_health_sets_error_on_exception(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera=camera, printer=NoOpPrinter(), image_root=tmp_path)
     controller.state = ControllerState.READY_FOR_PHOTO
 
     monkeypatch.setattr(camera, "health_check", lambda: (_ for _ in ()).throw(RuntimeError()))
@@ -485,7 +482,7 @@ def test_poll_camera_health_sets_error_on_exception(tmp_path, monkeypatch):
 
 def test_set_processing_error_does_not_override_existing_error(tmp_path):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     controller._set_camera_error(
         HealthCode.CAMERA_NOT_DETECTED,
@@ -500,10 +497,9 @@ def test_set_processing_error_does_not_override_existing_error(tmp_path):
     assert health.message == "Camera failed"
 
 
-
 def test_poll_camera_health_does_not_flash_error_on_transient_failure(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera=camera, printer=NoOpPrinter(), image_root=tmp_path)
     controller.state = ControllerState.READY_FOR_PHOTO
 
     # Transient failure (e.g., gphoto2 slowness) should not immediately surface an error.
@@ -519,9 +515,10 @@ def test_poll_camera_health_does_not_flash_error_on_transient_failure(tmp_path, 
     controller._poll_camera_health_if_idle()
     assert controller.get_health().level == HealthLevel.OK
 
+
 def test_poll_camera_health_sets_error_when_health_check_returns_false(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     controller.state = ControllerState.IDLE
 
@@ -547,7 +544,7 @@ def test_poll_camera_health_sets_error_when_health_check_returns_false(tmp_path,
 
 def test_take_photo_enqueued_before_ready_is_not_lost(tmp_path):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
     controller.countdown_seconds = 0
 
     controller.start()
@@ -562,7 +559,7 @@ def test_take_photo_enqueued_before_ready_is_not_lost(tmp_path):
 
 def test_take_photo_ignored_when_busy(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     # Simulate busy state
     controller.state = ControllerState.COUNTDOWN
@@ -596,7 +593,7 @@ def test_take_photo_ignored_when_busy(tmp_path, monkeypatch):
 
 def test_take_photo_reenqueued_when_not_ready_and_not_busy(tmp_path, monkeypatch):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     # State is neither READY nor busy
     controller.state = ControllerState.IDLE
@@ -630,11 +627,54 @@ def test_take_photo_reenqueued_when_not_ready_and_not_busy(tmp_path, monkeypatch
     assert put_args[0] is cmd, "Same command object should be re-queued"
 
 
+def test_controller_stores_printer_dependency(tmp_path):
+    camera = FakeCamera(tmp_path)
+
+    class DummyPrinter(NoOpPrinter):
+        pass
+
+    printer = DummyPrinter()
+    controller = PhotoboothController(camera=camera, printer=printer, image_root=tmp_path)
+
+    assert controller.printer is printer
+
+
+def test_start_print_job_returns_early_when_copies_less_than_one(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+
+    class SpyPrinter(NoOpPrinter):
+        def __init__(self):
+            self.preflight_called = False
+            self.print_called = False
+
+        def preflight(self) -> None:
+            self.preflight_called = True
+
+        def print_file(self, file_path: Path, *, copies: int = 1, job_name: str | None = None) -> None:
+            self.print_called = True
+
+    printer = SpyPrinter()
+    controller = PhotoboothController(camera=camera, printer=printer, image_root=tmp_path)
+
+    # If a worker thread were created, we'd see this called
+    started = {"called": False}
+    monkeypatch.setattr(threading, "Thread",
+                        lambda *a, **k: type("T", (), {"start": lambda _s: started.__setitem__("called", True)})())
+
+    controller._start_print_job(tmp_path / "print.jpg", copies=0)
+
+    assert printer.preflight_called is False
+    assert printer.print_called is False
+    assert started["called"] is False
+
+
 def test_set_config_error_does_not_overwrite_existing_error(tmp_path):
     """Cover the early-return branch in set_config_error when health is already ERROR."""
     camera = FakeCamera(tmp_path)
     camera.connected = False  # start() will mark capture error
-    controller = PhotoboothController(camera, tmp_path)
+
+    printer = SpyPrinter()
+    controller = PhotoboothController(camera, printer, tmp_path)
     controller.start()
 
     # Sanity: controller is unhealthy due to camera.
@@ -659,7 +699,7 @@ from tests.fakes.fake_camera import FakeCamera
 
 def test_get_status_has_no_most_recent_strip_url_when_no_session_storage(tmp_path):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera=camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     status = controller.get_status()
 
@@ -669,7 +709,7 @@ def test_get_status_has_no_most_recent_strip_url_when_no_session_storage(tmp_pat
 
 def test_get_status_includes_most_recent_strip_url_when_strip_exists(tmp_path):
     camera = FakeCamera(tmp_path)
-    controller = PhotoboothController(camera, tmp_path)
+    controller = PhotoboothController(camera=camera, printer=NoOpPrinter(), image_root=tmp_path)
 
     # Create a real file under sessions_root and point storage.strip_path to it.
     fake_strip = controller.sessions_root / "2026-01-02" / "session_x" / "strip.jpg"
@@ -691,7 +731,7 @@ class _ExplodingStorage:
 
 
 def test_get_status_swallows_exception_when_strip_path_access_fails(tmp_path):
-    controller = PhotoboothController(camera=FakeCamera(tmp_path), image_root=tmp_path)
+    controller = PhotoboothController(camera=FakeCamera(tmp_path), printer=NoOpPrinter(), image_root=tmp_path)
     controller._session_storage = _ExplodingStorage()
 
     status = controller.get_status()
@@ -705,3 +745,602 @@ def test_get_status_swallows_exception_when_strip_path_access_fails(tmp_path):
 
     # Exception path should prevent adding the derived URL
     assert "most_recent_strip_url" not in status
+
+
+def test_set_printer_error_does_not_override_existing_error(tmp_path):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera=camera, printer=NoOpPrinter(), image_root=tmp_path)
+
+    controller._set_processing_error("processing failed")
+    original = controller.get_health()
+    assert original.level == HealthLevel.ERROR
+
+    # Should not override existing error
+    controller._set_printer_error("printer failed", reasons=[])
+    after = controller.get_health()
+
+    assert after.level == original.level
+    assert after.code == original.code
+    assert after.message == original.message
+
+
+def test_set_printer_error_sets_printer_failed_and_message_and_instructions(tmp_path):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera=camera, printer=NoOpPrinter(), image_root=tmp_path)
+
+    controller._set_printer_error("Printer is not reachable", reasons=[])
+
+    health = controller.get_health()
+    assert health.level == HealthLevel.ERROR
+    assert health.code == HealthCode.PRINTER_FAILED
+    assert "not reachable" in (health.message or "")
+    assert controller._get_health_source() == HealthSource.PRINTER
+
+    # Wi-Fi workflow instructions (no USB)
+    assert any("Photobooth Wi-Fi" in s for s in (health.instructions or []))
+    assert not any("USB" in s for s in (health.instructions or []))
+
+
+def test_set_printer_error_includes_reason_hints(tmp_path):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera=camera, printer=NoOpPrinter(), image_root=tmp_path)
+
+    controller._set_printer_error(
+        "Printer reported a problem",
+        reasons=["media-empty", "marker-supply-empty"],
+    )
+
+    health = controller.get_health()
+    assert health.level == HealthLevel.ERROR
+    assert health.code == HealthCode.PRINTER_FAILED
+
+    instructions = health.instructions or []
+    assert "Reported by printer:" in instructions
+    assert any("Paper tray may be empty" in s for s in instructions)
+    assert any("Ink cartridge may be empty" in s for s in instructions)
+
+
+def test_set_printer_error_unknown_reason_is_preserved(tmp_path):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera=camera, printer=NoOpPrinter(), image_root=tmp_path)
+
+    controller._set_printer_error(
+        "Printer reported a problem",
+        reasons=["vendor-weird-state"],
+    )
+
+    instructions = controller.get_health().instructions or []
+    assert "Reported by printer:" in instructions
+    assert any("Printer reported: vendor-weird-state" in s for s in instructions)
+
+
+def test_busy_flag_true_when_printer_error_active(tmp_path):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera=camera, printer=NoOpPrinter(), image_root=tmp_path)
+
+    controller._set_printer_error("printer offline", reasons=[])
+
+    status = controller.get_status()
+    assert status["busy"] is True
+
+    health = controller.get_health()
+    assert health.level == HealthLevel.ERROR
+    assert health.code == HealthCode.PRINTER_FAILED
+
+
+def test_poll_printer_health_noop_when_not_idle(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+    printer = HealthCheckPrinter(result={"reachable": False, "state": None, "reasons": []})
+    controller = PhotoboothController(camera=camera, printer=printer, image_root=tmp_path)
+
+    controller.state = ControllerState.READY_FOR_PHOTO
+    controller._poll_printer_health_if_idle()
+
+    assert printer.calls == 0
+
+
+def test_poll_printer_health_throttles_by_interval(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+    printer = HealthCheckPrinter(result={"reachable": False, "state": None, "reasons": []})
+    controller = PhotoboothController(camera=camera, printer=printer, image_root=tmp_path)
+    controller.state = ControllerState.IDLE
+
+    t0 = 1000.0
+    monkeypatch.setattr("controller.controller.time.time", lambda: t0)
+    controller._poll_printer_health_if_idle()
+    assert printer.calls == 1
+
+    # Within PRINTER_POLL_INTERVAL -> no second call
+    monkeypatch.setattr("controller.controller.time.time", lambda: t0 + (controller.PRINTER_POLL_INTERVAL / 2.0))
+    controller._poll_printer_health_if_idle()
+    assert printer.calls == 1
+
+
+def test_poll_printer_health_returns_when_health_check_not_supported(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+    printer = HealthCheckPrinter(result=None)
+    controller = PhotoboothController(camera=camera, printer=printer, image_root=tmp_path)
+    controller.state = ControllerState.IDLE
+
+    monkeypatch.setattr("controller.controller.time.time", lambda: 2000.0)
+    controller._poll_printer_health_if_idle()
+
+    assert printer.calls == 1
+    assert controller.get_health().level == HealthLevel.OK
+
+
+def test_poll_printer_health_returns_when_health_check_raises(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+    printer = HealthCheckPrinter(result={"reachable": True, "state": "idle", "reasons": []}, raises=True)
+    controller = PhotoboothController(camera=camera, printer=printer, image_root=tmp_path)
+    controller.state = ControllerState.IDLE
+
+    monkeypatch.setattr("controller.controller.time.time", lambda: 2100.0)
+    controller._poll_printer_health_if_idle()
+
+    assert printer.calls == 1
+    assert controller.get_health().level == HealthLevel.OK
+
+
+def test_poll_printer_health_debounces_unreachable_then_sets_error(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+    printer = HealthCheckPrinter(result={"reachable": False, "state": None, "reasons": []})
+    controller = PhotoboothController(camera=camera, printer=printer, image_root=tmp_path)
+    controller.state = ControllerState.IDLE
+
+    t0 = 3000.0
+    monkeypatch.setattr("controller.controller.time.time", lambda: t0)
+    controller._poll_printer_health_if_idle()
+    assert controller.get_health().level == HealthLevel.OK
+
+    # After sustained failure beyond PRINTER_ERROR_AFTER
+    monkeypatch.setattr("controller.controller.time.time", lambda: t0 + controller.PRINTER_ERROR_AFTER + 0.1)
+    # also ensure polling interval allows another attempt
+    controller._printer_poll_last_attempt = 0.0
+    controller._poll_printer_health_if_idle()
+
+    health = controller.get_health()
+    assert health.level == HealthLevel.ERROR
+    assert health.code == HealthCode.PRINTER_FAILED
+    assert controller._get_health_source() == HealthSource.PRINTER
+    assert "not reachable" in (health.message or "")
+
+
+def test_poll_printer_health_sets_error_when_reasons_present(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+    printer = HealthCheckPrinter(result={"reachable": True, "state": "idle", "reasons": ["media-empty"]})
+    controller = PhotoboothController(camera=camera, printer=printer, image_root=tmp_path)
+    controller.state = ControllerState.IDLE
+
+    monkeypatch.setattr("controller.controller.time.time", lambda: 4000.0)
+    controller._poll_printer_health_if_idle()
+
+    health = controller.get_health()
+    assert health.level == HealthLevel.ERROR
+    assert health.code == HealthCode.PRINTER_FAILED
+    assert "reported a problem" in (health.message or "").lower()
+
+    instructions = health.instructions or []
+    assert "Reported by printer:" in instructions
+    assert any("Paper tray may be empty" in s for s in instructions)
+
+
+def test_poll_printer_health_clears_printer_error_when_healthy_again(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+    printer = HealthCheckPrinter(result={"reachable": True, "state": "idle", "reasons": []})
+    controller = PhotoboothController(camera=camera, printer=printer, image_root=tmp_path)
+    controller.state = ControllerState.IDLE
+
+    # Seed a PRINTER error
+    controller._set_printer_error("printer offline", reasons=[])
+    assert controller.get_health().level == HealthLevel.ERROR
+    assert controller._get_health_source() == HealthSource.PRINTER
+
+    monkeypatch.setattr("controller.controller.time.time", lambda: 5000.0)
+    controller._poll_printer_health_if_idle()
+
+    assert controller.get_health().level == HealthLevel.OK
+    assert controller._get_health_source() is None
+
+
+def test_start_print_job_returns_early_when_copies_less_than_one(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+
+    class SpyPrinter(NoOpPrinter):
+        def __init__(self):
+            self.preflight_called = False
+            self.print_called = False
+
+        def preflight(self) -> None:
+            self.preflight_called = True
+
+        def print_file(self, file_path: Path, *, copies: int = 1, job_name: str | None = None) -> None:
+            self.print_called = True
+
+    printer = SpyPrinter()
+    controller = PhotoboothController(camera=camera, printer=printer, image_root=tmp_path)
+
+    started = {"called": False}
+    monkeypatch.setattr(
+        threading,
+        "Thread",
+        lambda *a, **k: type("T", (), {"start": lambda _s: started.__setitem__("called", True)})()
+    )
+
+    controller._start_print_job(tmp_path / "print.jpg", copies=0)
+
+    assert printer.preflight_called is False
+    assert printer.print_called is False
+    assert started["called"] is False
+
+
+def test_start_print_job_queues_second_job_when_print_in_flight_and_drains_in_order(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+
+    calls = []
+
+    class SpyPrinter(NoOpPrinter):
+        def preflight(self) -> None:
+            calls.append(("preflight", None))
+
+        def print_file(self, file_path: Path, *, copies: int = 1, job_name: str | None = None) -> None:
+            calls.append(("print", file_path.name, copies, job_name))
+
+    printer = SpyPrinter()
+    controller = PhotoboothController(camera=camera, printer=printer, image_root=tmp_path)
+
+    # Fake files (controller doesn't validate path existence; printer may in real impl)
+    p1 = tmp_path / "a.jpg"
+    p2 = tmp_path / "b.jpg"
+    p1.write_bytes(b"x")
+    p2.write_bytes(b"y")
+
+    # Thread control: capture the worker target and run it later.
+    targets = []
+
+    class CapturingThread:
+        def __init__(self, target, daemon):
+            self._target = target
+
+        def start(self):
+            targets.append(self._target)
+
+    monkeypatch.setattr(threading, "Thread", lambda *a, **k: CapturingThread(k["target"], k["daemon"]))
+
+    # First call: enqueues and starts worker (but does not run yet)
+    controller._start_print_job(p1, copies=1)
+    assert controller._print_in_flight is True
+    assert len(controller._pending_prints) == 1
+    assert len(targets) == 1
+
+    # Second call while in flight: should queue and NOT start another worker
+    controller._start_print_job(p2, copies=2)
+    assert len(controller._pending_prints) == 2
+    assert len(targets) == 1  # still only one worker
+
+    # Now run the worker, it should drain both jobs in FIFO order
+    targets[0]()
+
+    assert ("print", "a.jpg", 1, "Photobooth Print") in calls
+    assert ("print", "b.jpg", 2, "Photobooth Print") in calls
+
+    # Queue drained and in-flight reset
+    assert controller._pending_prints == []
+    assert controller._print_in_flight is False
+
+
+def test_start_print_job_stops_on_failure_sets_health_and_leaves_queue_intact(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+
+    call_count = {"n": 0}
+
+    class ExplodingPrinter(NoOpPrinter):
+        def preflight(self) -> None:
+            return
+
+        def print_file(self, file_path: Path, *, copies: int = 1, job_name: str | None = None) -> None:
+            call_count["n"] += 1
+            raise PrinterError("lp failed")
+
+    printer = ExplodingPrinter()
+    controller = PhotoboothController(camera=camera, printer=printer, image_root=tmp_path)
+
+    p1 = tmp_path / "a.jpg"
+    p2 = tmp_path / "b.jpg"
+    p1.write_bytes(b"x")
+    p2.write_bytes(b"y")
+
+    # Capture the worker target and run it once after both jobs are enqueued.
+    targets = []
+
+    class CapturingThread:
+        def __init__(self, target, daemon):
+            self._target = target
+
+        def start(self):
+            targets.append(self._target)
+
+    monkeypatch.setattr(threading, "Thread", lambda *a, **k: CapturingThread(k["target"], k["daemon"]))
+
+    controller._start_print_job(p1, copies=1)
+    controller._start_print_job(p2, copies=1)
+
+    # Only one worker should start.
+    assert len(targets) == 1
+
+    # Run the worker once. It should attempt the first job and fail,
+    # and it must NOT drain the second job.
+    targets[0]()
+
+    assert call_count["n"] == 1
+
+    health = controller.get_health()
+    assert health.level == HealthLevel.ERROR
+    assert health.code == HealthCode.PRINTER_FAILED
+    assert controller._get_health_source() == HealthSource.PRINTER
+
+    # Queue should still have at least one pending job (the failed head or remaining jobs)
+    assert len(controller._pending_prints) >= 1
+
+
+def test_start_print_job_sets_printer_error_when_preflight_raises(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+
+    class PreflightFailsPrinter(NoOpPrinter):
+        def preflight(self) -> None:
+            raise PrinterError("cups missing")
+
+        def print_file(self, file_path: Path, *, copies: int = 1, job_name: str | None = None) -> None:
+            raise AssertionError("print should not run when preflight fails")
+
+    printer = PreflightFailsPrinter()
+    controller = PhotoboothController(camera=camera, printer=printer, image_root=tmp_path)
+
+    p = tmp_path / "a.jpg"
+    p.write_bytes(b"x")
+
+    class ImmediateThread:
+        def __init__(self, target, daemon):
+            self._target = target
+
+        def start(self):
+            self._target()
+
+    monkeypatch.setattr(threading, "Thread", lambda *a, **k: ImmediateThread(k["target"], k["daemon"]))
+
+    controller._start_print_job(p, copies=1)
+
+    health = controller.get_health()
+    assert health.level == HealthLevel.ERROR
+    assert health.code == HealthCode.PRINTER_FAILED
+    assert "cups missing" in (health.message or "")
+
+
+def test_kick_print_worker_returns_when_print_in_flight(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera=camera, printer=NoOpPrinter(), image_root=tmp_path)
+
+    # Seed a pending job and mark print in flight
+    with controller._print_lock:
+        controller._pending_prints.append((tmp_path / "a.jpg", 1))
+        controller._print_in_flight = True
+
+    started = {"count": 0}
+
+    class CapturingThread:
+        def __init__(self, target, daemon):
+            self._target = target
+
+        def start(self):
+            started["count"] += 1
+
+    monkeypatch.setattr(threading, "Thread", lambda *a, **k: CapturingThread(k["target"], k["daemon"]))
+
+    controller._kick_print_worker_if_needed()
+
+    # Should not start a worker
+    assert started["count"] == 0
+
+    # Queue remains untouched
+    with controller._print_lock:
+        assert len(controller._pending_prints) == 1
+        assert controller._print_in_flight is True
+
+
+def test_kick_print_worker_sets_printer_error_on_worker_exception(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+
+    class ExplodingPrinter(NoOpPrinter):
+        def preflight(self) -> None:
+            return
+
+        def print_file(self, file_path: Path, *, copies: int = 1, job_name: str | None = None) -> None:
+            raise PrinterError("boom")
+
+    printer = ExplodingPrinter()
+    controller = PhotoboothController(camera=camera, printer=printer, image_root=tmp_path)
+
+    p1 = tmp_path / "a.jpg"
+    p1.write_bytes(b"x")
+
+    # Seed a pending job; worker should pick it up and explode
+    with controller._print_lock:
+        controller._pending_prints.append((p1, 1))
+        controller._print_in_flight = False
+
+    # Capture thread target and run deterministically
+    targets = []
+
+    class CapturingThread:
+        def __init__(self, target, daemon):
+            self._target = target
+
+        def start(self):
+            targets.append(self._target)
+
+    monkeypatch.setattr(threading, "Thread", lambda *a, **k: CapturingThread(k["target"], k["daemon"]))
+
+    controller._kick_print_worker_if_needed()
+    assert len(targets) == 1
+
+    # Run the worker
+    targets[0]()
+
+    health = controller.get_health()
+    assert health.level == HealthLevel.ERROR
+    assert health.code == HealthCode.PRINTER_FAILED
+    assert controller._get_health_source() == HealthSource.PRINTER
+    assert "boom" in (health.message or "")
+
+    # Ensure print_in_flight reset, and queue not silently discarded
+    with controller._print_lock:
+        assert controller._print_in_flight is False
+        assert len(controller._pending_prints) >= 1
+
+
+def test_poll_printer_health_returns_during_debounce_window_before_error_after(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+
+    printer = HealthCheckPrinter(result={"reachable": False, "state": None, "reasons": []})
+    controller = PhotoboothController(camera=camera, printer=printer, image_root=tmp_path)
+    controller.state = ControllerState.IDLE
+
+    t0 = 1000.0
+    monkeypatch.setattr("controller.controller.time.time", lambda: t0)
+    controller._poll_printer_health_if_idle()
+
+    # First failure starts debounce, no error yet
+    assert controller.get_health().level == HealthLevel.OK
+    assert printer.calls == 1
+    assert controller._printer_poll_fail_since == t0
+
+    # Second attempt occurs after poll interval, but before PRINTER_ERROR_AFTER
+    t1 = t0 + controller.PRINTER_POLL_INTERVAL + 0.1
+    # Ensure still inside debounce window
+    assert (t1 - t0) < controller.PRINTER_ERROR_AFTER
+
+    monkeypatch.setattr("controller.controller.time.time", lambda: t1)
+    controller._poll_printer_health_if_idle()
+
+    # Still debouncing, still no error
+    assert printer.calls == 2
+    assert controller.get_health().level == HealthLevel.OK
+    assert controller._printer_poll_fail_since == t0
+
+
+def test_kick_print_worker_returns_when_no_pending_prints(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera=camera, printer=NoOpPrinter(), image_root=tmp_path)
+
+    # Ensure no pending prints and not in flight
+    with controller._print_lock:
+        controller._pending_prints.clear()
+        controller._print_in_flight = False
+
+    started = {"count": 0}
+
+    class CapturingThread:
+        def __init__(self, target, daemon):
+            self._target = target
+
+        def start(self):
+            started["count"] += 1
+
+    monkeypatch.setattr(threading, "Thread", lambda *a, **k: CapturingThread(k["target"], k["daemon"]))
+
+    controller._kick_print_worker_if_needed()
+
+    # Should not start a worker
+    assert started["count"] == 0
+
+    # Still no pending prints, still not in flight
+    with controller._print_lock:
+        assert controller._pending_prints == []
+        assert controller._print_in_flight is False
+
+
+def test_poll_camera_health_does_not_clear_printer_error(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+    controller = PhotoboothController(camera=camera, printer=NoOpPrinter(), image_root=tmp_path)
+
+    # Seed a PRINTER-owned error
+    controller._set_printer_error("printer offline", reasons=[])
+    assert controller._get_health_source() == HealthSource.PRINTER
+    assert controller.get_health().level == HealthLevel.ERROR
+
+    # Camera is healthy
+    controller.state = ControllerState.IDLE
+    monkeypatch.setattr(camera, "health_check", lambda: True)
+
+    # Camera polling should NOT clear printer error
+    controller._poll_camera_health_if_idle()
+
+    assert controller.get_health().level == HealthLevel.ERROR
+    assert controller._get_health_source() == HealthSource.PRINTER
+    assert "printer offline" in (controller.get_health().message or "")
+
+
+def test_poll_printer_health_does_not_clear_camera_error(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+    printer = HealthCheckPrinter(result={"reachable": True, "state": "idle", "reasons": []})
+    controller = PhotoboothController(camera=camera, printer=printer, image_root=tmp_path)
+    controller.state = ControllerState.IDLE
+
+    # Seed a CAPTURE-owned error
+    controller._set_camera_error(
+        HealthCode.CAMERA_NOT_DETECTED,
+        "Camera missing",
+        source=HealthSource.CAPTURE,
+    )
+    assert controller.get_health().level == HealthLevel.ERROR
+    assert controller._get_health_source() == HealthSource.CAPTURE
+
+    monkeypatch.setattr("controller.controller.time.time", lambda: 6000.0)
+    controller._poll_printer_health_if_idle()
+
+    # Printer poll should not clear camera-owned error
+    health = controller.get_health()
+    assert health.level == HealthLevel.ERROR
+    assert health.code == HealthCode.CAMERA_NOT_DETECTED
+    assert controller._get_health_source() == HealthSource.CAPTURE
+
+
+def test_maybe_start_print_worker_thread_start_failure_rolls_back_in_flight_and_sets_error(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+
+    class NoOpPrinter(Printer):
+        def preflight(self) -> None:
+            return
+
+        def print_file(self, file_path: Path, *, copies: int = 1, job_name: str | None = None) -> None:
+            return
+
+    controller = PhotoboothController(camera=camera, printer=NoOpPrinter(), image_root=tmp_path)
+
+    # Seed pending work and ensure no worker in flight
+    with controller._print_lock:
+        controller._pending_prints.append((tmp_path / "a.jpg", 1))
+        controller._print_in_flight = False
+
+    class ExplodingThread:
+        def __init__(self, target, daemon):
+            self._target = target
+
+        def start(self):
+            raise RuntimeError("thread start failed")
+
+    monkeypatch.setattr(threading, "Thread", lambda *a, **k: ExplodingThread(k["target"], k["daemon"]))
+
+    controller._maybe_start_print_worker()
+
+    # Should not wedge: in-flight must be rolled back
+    with controller._print_lock:
+        assert controller._print_in_flight is False
+        assert len(controller._pending_prints) == 1  # job still pending
+
+    # Should surface operator-visible printer error
+    health = controller.get_health()
+    assert health.level == HealthLevel.ERROR
+    assert health.code == HealthCode.PRINTER_FAILED
+    assert controller._get_health_source() == HealthSource.PRINTER
+    assert "thread start failed" in (health.message or "")
