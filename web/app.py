@@ -32,7 +32,7 @@ def create_app(camera: Camera | None = None, printer: Printer | None = None, ima
     Tests may pass these explicitly.
     """
     # Deployment config is required for operation, but the server should still start
-    # (headless Pi) so /healthz can surface actionable errors.
+    # (headless Pi) so /health can surface actionable errors.
     config_problems: list[str] = []
     env_root = os.getenv("PHOTOBOOTH_IMAGE_ROOT")
     env_album_code = os.getenv("PHOTOBOOTH_ALBUM_CODE")
@@ -106,12 +106,6 @@ def create_app(camera: Camera | None = None, printer: Printer | None = None, ima
 
     @app.route("/health", methods=["GET"])
     def health():
-        return jsonify(controller.get_health().to_dict())
-
-    # an alias of the above health - might be modified in the future
-    # to contain system information
-    @app.route("/healthz", methods=["GET"])
-    def healthz():
         return jsonify(controller.get_health().to_dict())
 
     @app.route("/status", methods=["GET"])

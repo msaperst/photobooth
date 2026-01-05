@@ -162,7 +162,7 @@ class PhotoboothController:
 
         This is intended to be called once at startup by the web app when required
         deployment configuration is missing/invalid. The service should still start
-        so that /healthz can surface actionable errors on a headless Pi.
+        so that /health can surface actionable errors on a headless Pi.
         """
         with self._health_lock:
             # Do not overwrite an existing error; config errors are "first cause".

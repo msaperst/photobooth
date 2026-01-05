@@ -137,7 +137,7 @@ Required values:
 Important:
 
 - The service will start even if these values are missing (headless Pi), but the booth will be UNHEALTHY.
-- When unhealthy, /healthz will show an explicit CONFIG_INVALID error with exact fix instructions.
+- When unhealthy, /health will show an explicit CONFIG_INVALID error with exact fix instructions.
 - The UI/API will refuse to start sessions or take photos while unhealthy.
 
 After changing /etc/photobooth.env or replacing the logo, restart the service:
@@ -178,7 +178,7 @@ systemctl status photobooth --no-pager
 Health:
 
 ```bash
-curl http://localhost:5000/healthz
+curl http://localhost:5000/health
 ```
 
 Logs:

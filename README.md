@@ -4,7 +4,7 @@ This repository contains **Photobooth v2**, an event‑grade, unattended‑capab
 
 * **Raspberry Pi (Raspbian)** as the system controller
 * **Nikon D750** tethered via USB (gphoto2)
-* **Canon Selphy ES30** (prototype) → **Canon Selphy CP1300/CP1500** (production)
+* **Canon Selphy CP1500** tethered via Wi-Fi (production)
 * **iPad** as a fixed touchscreen UI (web‑based, no native app)
 
 The system is designed to be **offline‑capable**, **reproducible from scratch**, and **robust under real event
@@ -58,7 +58,7 @@ exist for ease of use
 * Hosts web UI and API
 * Owns camera and printer
 * Runs a single‑threaded controller with a command queue
-* Executes OS‑level commands (gphoto2, ImageMagick, CUPS)
+* Executes OS‑level commands (gphoto2, CUPS)
 
 **Camera (Nikon D750)**
 
