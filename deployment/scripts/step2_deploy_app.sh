@@ -133,7 +133,7 @@ systemctl --no-pager --full status photobooth || true
 
 echo "==> Quick health check (may show CONFIG_INVALID until you edit /etc/photobooth.env)"
 if command -v curl >/dev/null 2>&1; then
-  curl -s http://127.0.0.1:5000/healthz || true
+  curl -s http://127.0.0.1:5000/health || true
   echo
 else
   echo "    curl not installed; install with: sudo apt-get install -y curl"
@@ -144,4 +144,4 @@ echo "Next steps:"
 echo "  1) Edit ${ENV_FILE} (set PHOTOBOOTH_IMAGE_ROOT, PHOTOBOOTH_ALBUM_CODE, PHOTOBOOTH_LOGO_PATH)"
 echo "  2) Copy your event logo to the path you set (e.g. ${DATA_DIR}/logo.png)"
 echo "  3) Restart: sudo systemctl restart photobooth"
-echo "  4) Check: curl http://127.0.0.1:5000/healthz"
+echo "  4) Check: curl http://127.0.0.1:5000/health"

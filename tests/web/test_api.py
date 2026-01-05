@@ -14,7 +14,8 @@ def client(tmp_path):
     logo_path = tmp_path / "logo.png"
     # Minimal valid PNG header so PIL can open if needed later
     logo_path.write_bytes(b"\x89PNG\r\n\x1a\n")
-    app = create_app(camera=camera, printer=NoOpPrinter(), image_root=tmp_path, album_code="TESTALBUM", logo_path=logo_path)
+    app = create_app(camera=camera, printer=NoOpPrinter(), image_root=tmp_path, album_code="TESTALBUM",
+                     logo_path=logo_path)
     app.config["TESTING"] = True
     return app.test_client()
 
@@ -26,7 +27,7 @@ def test_create_app_requires_env_when_no_overrides(monkeypatch):
     app = create_app(camera=FakeCamera(Path("/tmp")))
     app.config["TESTING"] = True
     client = app.test_client()
-    resp = client.get("/healthz")
+    resp = client.get("/health")
     assert resp.status_code == 200
     data = resp.get_json()
     assert data["level"] == "ERROR"
@@ -118,12 +119,6 @@ def test_health_endpoint_ok(client):
     assert resp.json == {"level": "OK"}
 
 
-def test_healthz_endpoint_ok(client):
-    resp = client.get("/healthz")
-    assert resp.status_code == 200
-    assert resp.json == {"level": "OK"}
-
-
 def test_sessions_route_serves_file(tmp_path, monkeypatch):
     """
     Verify that /sessions/<path> serves files from the sessions directory.
@@ -171,7 +166,7 @@ def test_create_app_uses_env_vars_when_overrides_are_none(monkeypatch, tmp_path)
     client = app.test_client()
 
     # Assert: service starts healthy and uses env values.
-    resp = client.get("/healthz")
+    resp = client.get("/health")
     assert resp.status_code == 200
     assert resp.get_json() == {"level": "OK"}
 
@@ -194,7 +189,7 @@ def test_create_app_reports_invalid_logo_path(monkeypatch, tmp_path):
     app.config["TESTING"] = True
     client = app.test_client()
 
-    resp = client.get("/healthz")
+    resp = client.get("/health")
     data = resp.get_json()
     assert data["level"] == "ERROR"
     assert data["code"] == "CONFIG_INVALID"
