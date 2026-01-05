@@ -68,7 +68,7 @@ exist for ease of use
 
 **Printer (Canon Selphy)**
 
-* USB via CUPS
+* CUPS over WiFi
 * Controlled exclusively via CUPS
 
 ---
@@ -279,7 +279,7 @@ For reliability and maintainability, all production printing uses Wi‑Fi IPP Ev
 Example access:
 
 ```
-http://192.168.4.1
+http://192.168.4.1:5000
 ```
 
 ---
@@ -337,7 +337,9 @@ The system is designed to run unattended. When present, an attendant:
 * Keeps groups moving
 * Handles edge cases
 
-The attendant does **not** operate the camera.
+The attendant uses camera to zoom in/out and verify framing,
+ensures camera is in focus, but does **not** use camera to take
+pictures. iPad is used to control sessions and pictures.
 
 ---
 
