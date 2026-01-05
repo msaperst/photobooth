@@ -62,8 +62,6 @@ The screen turns **RED** only when action is required.
 3. The green light should be blinking
 4. Unplug then replug in the Raspberry Pi power cord
 
----
-
 ### 🔴 Printer Not Reachable
 
 **Meaning:** Printer is off or disconnected
@@ -74,8 +72,6 @@ The screen turns **RED** only when action is required.
 2. Ensure printer is connected to **Photobooth** Wi-Fi
 3. Wait 30 seconds
 4. Printing will resume automatically
-
----
 
 ### 🔴 Printer Needs Attention
 
@@ -91,8 +87,6 @@ The LCD on the printer should tell you what the problem is. If not check:
 
 Printing should resume automatically
 
----
-
 ### 🔴 Camera Error
 
 **Meaning:** Camera power or cable issue
@@ -103,8 +97,6 @@ Printing should resume automatically
 2. Check camera USB cable
 3. Wait ~10 seconds
 4. Booth recovers automatically
-
----
 
 ### 🔴 Strip Creation Error
 
