@@ -10,9 +10,6 @@ This repository contains **Photobooth v2**, an event‑grade, unattended‑capab
 The system is designed to be **offline‑capable**, **reproducible from scratch**, and **robust under real event
 conditions**.
 
-> An important note about
-> [powering the Raspberry Pi](docs/raspberry_pi_power_requirements.md)
-
 ---
 
 ## Runbooks
@@ -59,6 +56,11 @@ exist for ease of use
 * Owns camera and printer
 * Runs a single‑threaded controller with a command queue
 * Executes OS‑level commands (gphoto2, CUPS)
+
+> **Note about powering the Raspberry Pi:**
+>
+> Use a **proper Raspberry Pi–rated power supply** (stable 5V, sufficient
+> current). When in doubt, use the official Raspberry Pi power supply.
 
 **Camera (Nikon D750)**
 
