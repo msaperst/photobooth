@@ -62,6 +62,8 @@ The screen turns **RED** only when action is required.
 3. The green light should be blinking
 4. Unplug then replug in the Raspberry Pi power cord
 
+---
+
 ### 🔴 Printer Not Reachable
 
 **Meaning:** Printer is off or disconnected

@@ -248,9 +248,10 @@ Live view may be reintroduced **only if a future camera supports it cleanly and 
 * Faster print times
 * Better driver support
 
-Printing is handled synchronously and sequentially to avoid
-printer overload. Session processing produces `strip.jpg`
-and `print.jpg` (print-ready 1200×1800 @300 DPI).
+Printing is queued and processed sequentially in a background
+worker so the UI/session loop stays responsive. Session
+processing produces `strip.jpg` and `print.jpg` (print-ready
+1200×1800 @300 DPI).
 
 Strip/print sizing and responsibilities are defined in `docs/strip-vs-print-contract.md`.
 
@@ -284,46 +285,76 @@ http://192.168.4.1:5000
 
 ---
 
-## Web API (Internal)
+## Web API Overview
 
-The API is intentionally minimal.
+The Web API exists solely to support the touchscreen UI.
+It is intentionally minimal and tightly coupled to the photobooth workflow.
 
-### Start Session
+The UI does **not** control hardware directly.
+All hardware interaction flows through the `PhotoboothController`.
 
-```http
-POST /start-session
-```
+### High-Level Request Flow
 
-Payload:
+1. **UI loads**
+    - The browser loads the main UI from `/`.
+    - The UI immediately begins polling `/status`.
 
-```json
-{
-  "print_count": 2
-}
-```
+2. **Idle state**
+    - `GET /status`
+    - UI displays the idle screen and waits for readiness.
+    - Any active error state is reflected here.
 
-### Status
+3. **Start session**
+    - `POST /start-session`
+    - UI transitions to a countdown / capture-ready state.
+    - Controller initializes a new session directory and state.
 
-```http
-GET /status
-```
+4. **Capture photos**
+    - `POST /take-photo` (called once per capture)
+    - Each call triggers a camera capture via the controller.
+    - UI uses `/status` to reflect progress and countdown timing.
 
-Returns:
+5. **Session completion**
+    - After the final capture, the controller:
+        - Finalizes the session
+        - Generates strip and print assets
+        - Queues printing asynchronously (if enabled)
 
-```json
-{
-  "state": "COUNTDOWN",
-  "countdown": 3
-}
-```
+6. **Post-session**
+    - UI returns to idle once the controller reports readiness.
+    - Download and QR endpoints may be used to access the most recent strip.
+
+### Supporting Endpoints
+
+- `GET /status`
+    - Polled by the UI to reflect:
+        - current state
+        - progress
+        - errors and instructions
+
+- `GET /health`
+    - Reports system health and configuration readiness.
+
+- Download / QR endpoints
+    - Provide access to the most recent session’s strip image.
+    - Used for testing, verification, or optional guest download flows.
+
+### Design Notes
+
+- The API is **poll-based**, not streaming.
+- The controller is resilient to repeated or delayed requests.
+- UI behavior is driven entirely by controller state, not assumptions.
+
+This keeps the UI simple, stateless, and recoverable.
 
 ---
 
 ## Safety & Concurrency Guarantees
 
-* Single controller thread
+* Single-threaded command processing (controller loop + in-memory queue)
 * In‑memory command queue
-* No parallel hardware access
+* Hardware access is controller-owned; long operations run in controller-managed worker threads
+* No concurrent access to the same hardware device
 * UI reloads are safe
 * iPad disconnect does not stop an active session
 
@@ -366,15 +397,59 @@ If something can fail at an event, it eventually will — design accordingly.
 
 ## Implementation
 
-Implementation steps are intentionally documented in separate files to keep this README concise and readable.
+Some implementation steps are intentionally documented in separate files to
+keep this README concise and readable.
 
 ### Development
 
-TBD
+This repository is developed using a deliberate, test-driven
+workflow to protect known-good hardware behavior.
 
-### Testing & CI
+1. **Identify a scoped change**
 
-See: [testing-and-ci.md](docs/testing-and-ci.md)
+- Bug fix, hardening improvement, or explicitly requested feature.
+- Avoid refactors unless strictly necessary.
+
+2. **Create a feature branch**
+
+```bash
+git checkout -b <descriptive-branch-name>
+```
+
+3. **Implement the change**
+
+- Follow existing architecture and patterns.
+- Do not bypass the `PhotoboothController.`
+- Do not introduce new hardware access paths.
+
+4. **Add or update tests**
+
+- Unit tests are required for all non-trivial logic.
+- Tests must reflect real system behavior and failure modes.
+- See [testing-and-ci.md](docs/testing-and-ci.md).
+
+5. **Validate on real hardware**
+
+- Run the change on a Raspberry Pi with the real camera and printer.
+- Verify behavior under normal and failure conditions.
+- Do not rely on tests alone for hardware-facing changes.
+
+6. **Run CI locally**
+
+```bash
+pytest --cov=controller --cov=web --cov=imaging --cov-fail-under=80 --cov-report=term-missing
+```
+
+7. **Open a pull request**
+
+- Ensure CI is green.
+- Include a clear description of what changed and why.
+- Link to any relevant runbook or documentation updates.
+
+8. **Merge only when satisfied**
+
+- Known-good hardware paths must remain intact.
+- Documentation and tests must stay in sync with code.
 
 ### Setup
 
@@ -395,10 +470,6 @@ To run the scripts:
 sudo ./deployment/scripts/step1_provision_pi.sh
 sudo ./deployment/scripts/step2_deploy_app.sh
 ```
-
-### Recovery and Errors
-
-See: [recovery-and-errors.md](docs/recovery-and-errors.md)
 
 ### Accessing Photos
 
