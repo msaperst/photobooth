@@ -287,15 +287,12 @@ class PhotoboothController:
         This function is safe with tests that monkeypatch threading.Thread to run
         synchronously because it never starts the worker while holding _print_lock.
         """
-        should_start = False
-
         with self._print_lock:
             if self._print_in_flight:
                 return
             if not self._pending_prints:
                 return
             self._print_in_flight = True
-            should_start = True
 
         try:
             threading.Thread(target=self._print_worker, daemon=True).start()
