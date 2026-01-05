@@ -240,7 +240,6 @@ class PhotoboothController:
             if self.state == ControllerState.IDLE:
                 self._session_flow.start_session(command.payload)
 
-
         elif command.command_type == CommandType.TAKE_PHOTO:
             with self._state_lock:
                 state = self.state
