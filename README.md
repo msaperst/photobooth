@@ -12,6 +12,16 @@ conditions**.
 
 ---
 
+## Runbooks
+
+Documentation for
+[night before setup](runbooks/photobooth_night_before_prep.md),
+[operators guide](runbooks/photobooth_operator_runbook.md), and
+[technical troubleshooting](runbooks/photobooth_technical_troubleshooting.md)
+exist for ease of use
+
+---
+
 ## Design Goals
 
 * No operator required for normal operation
@@ -101,10 +111,12 @@ State is exposed read‑only to the UI via `/status`.
 Key directories and their purpose:
 
 - `controller/` — single source of truth for system state (sessions, health, command queue) and all hardware access.
+- `deployment/` — scripts for configuring raspberry pi (AP setup, launching app on boot, etc).
 - `imaging/` — deterministic image processing functions (strip creation, print composition).
 - `web/` — Flask API + web UI assets (the iPad touchscreen client).
 - `tests/` — pytest unit tests (controller rules, imaging, and API behavior). Tests use `tmp_path`; CI must stay green.
 - `docs/` — project documentation and operational notes.
+- `runbooks/` — documentation for successfully prepping for and operating photobooth
 
 Runtime session data is written under `<image_root>/sessions/...` (see `docs/session-storage-and-access.md`).
 
