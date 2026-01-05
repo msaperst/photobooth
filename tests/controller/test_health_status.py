@@ -1,4 +1,4 @@
-from controller.health import HealthStatus, HealthLevel, HealthCode
+from controller.health import HealthStatus, HealthLevel, HealthCode, HealthSource
 
 
 def test_ok_health_status():
@@ -18,3 +18,11 @@ def test_error_health_status():
     assert data["level"] == "ERROR"
     assert data["code"] == "CAMERA_NOT_DETECTED"
     assert "Turn camera on" in data["instructions"]
+
+
+def test_health_enums_include_printer():
+    # HealthSource should support printer-owned errors
+    assert hasattr(HealthSource, "PRINTER")
+
+    # HealthCode should include a printer failure code
+    assert hasattr(HealthCode, "PRINTER_FAILED")

@@ -9,12 +9,18 @@ import qrcode
 from PIL import Image
 from flask import Flask, jsonify, request, render_template, send_from_directory, send_file
 
+from controller.camera_base import Camera
 from controller.controller import PhotoboothController, Command, CommandType
+from controller.cups_printer import CupsPrinter
 from controller.gphoto_camera import GPhotoCamera
 from controller.health import HealthLevel
+from controller.printer_base import Printer
+
+DEFAULT_CUPS_PRINTER = "Canon_SELPHY_CP1500"
 
 
-def create_app(camera=None, image_root: Path | None = None, *, album_code: str | None = None,
+def create_app(camera: Camera | None = None, printer: Printer | None = None, image_root: Path | None = None, *,
+               album_code: str | None = None,
                logo_path: Path | None = None):
     """Create the Flask app.
 
@@ -65,8 +71,12 @@ def create_app(camera=None, image_root: Path | None = None, *, album_code: str |
     if camera is None:
         camera = GPhotoCamera()
 
+    if printer is None:
+        printer = CupsPrinter(printer_name=DEFAULT_CUPS_PRINTER)
+
     controller = PhotoboothController(
         camera=camera,
+        printer=printer,
         image_root=image_root,
         strip_logo_path=logo_path,
         event_album_code=album_code,

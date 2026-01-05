@@ -10,6 +10,9 @@ This repository contains **Photobooth v2**, an event‑grade, unattended‑capab
 The system is designed to be **offline‑capable**, **reproducible from scratch**, and **robust under real event
 conditions**.
 
+> An important note about
+> [powering the Raspberry Pi](docs/raspberry_pi_power_requirements.md)
+
 ---
 
 ## Runbooks
@@ -45,7 +48,6 @@ exist for ease of use
 **iPad (UI only)**
 
 * Touchscreen controls
-* Live camera preview
 * Countdown display
 * Print count selection
 * Connects via local Wi‑Fi to the Raspberry Pi
@@ -73,20 +75,32 @@ exist for ease of use
 
 ## System Flow Overview
 
-1. Guests position themselves using physical markers and
-   on-screen guidance (Live camera preview is intentionally
-   disabled for noise, reliability, and hardware longevity)
-2. Guest selects number of prints and taps **Start**
-3. UI sends request to Pi API
-4. Pi enqueues a session command
-5. Controller executes:
+1. Guests position themselves using physical markers and on-screen guidance.
+   (Live camera preview is intentionally disabled for noise, reliability, and hardware longevity.)
 
-    * Countdown
-    * Photo capture loop
-    * Image processing
-    * Printing
-6. Status updates are streamed back to the UI
-7. System returns to idle
+2. Guest selects the number of strips to print (2/4/6/8) and taps **Start**.
+
+3. UI sends `POST /start-session` with:
+    - `print_count` (number of print sheets; 2 strips per sheet)
+
+4. The controller transitions to an active session and becomes ready for the first photo.
+
+5. Photo capture is guest-driven using the same on-screen button:
+    - Each tap triggers `POST /take-photo`
+    - The controller runs a countdown, captures a photo, and returns to READY_FOR_PHOTO
+    - This repeats until all photos are captured
+
+6. After the final photo, the controller processes the session:
+    - Generates `strip.jpg` (600x1596, printer-agnostic)
+    - Generates `print.jpg` (1200x1800 @300 DPI; two strips side-by-side; print-only text under each)
+
+7. Printing (CUPS) is started asynchronously so the UI is not blocked.
+   The system returns to IDLE so the next guests can begin while the printer finishes.
+   Any printer errors are surfaced through `/health`.
+
+> **_NOTE:_** Three photos are always taken for the strip. The first
+> time the take photo button is clicked, the `/start-session` endpoint is
+> called, followed immediately by the `/take-photo` endpoint
 
 ---
 
@@ -119,6 +133,31 @@ Key directories and their purpose:
 - `runbooks/` — documentation for successfully prepping for and operating photobooth
 
 Runtime session data is written under `<image_root>/sessions/...` (see `docs/session-storage-and-access.md`).
+
+---
+
+## Event Configuration (Album Code + Logo)
+
+Two event-level values are configured directly in the controller for now (intentionally simple for MVP):
+
+1) Album code (printed under each strip on the print sheet)
+
+- File: `controller/controller.py`
+- Field: `PhotoboothController.event_album_code`
+- Example (current):
+  `self.event_album_code = "MaxMitzvah2026"`
+
+2) Logo used in strip + print rendering
+
+- File: `controller/controller.py`
+- Field: `PhotoboothController.strip_logo_path`
+- Default location (current):
+  `imaging/logo.png`
+
+To update the logo, replace the file at `imaging/logo.png` (or change `strip_logo_path` to point elsewhere).
+The logo is required for strip creation.
+
+---
 
 ## Camera Configuration
 
@@ -205,14 +244,7 @@ Live view may be reintroduced **only if a future camera supports it cleanly and 
 
 ## Printing
 
-### Prototype Printer
-
-* Canon Selphy ES30
-* USB via CUPS
-
-### Production Target
-
-* Canon Selphy CP1300 or CP1500
+* Canon Selphy CP1500
 * Faster print times
 * Better driver support
 
@@ -221,6 +253,19 @@ printer overload. Session processing produces `strip.jpg`
 and `print.jpg` (print-ready 1200×1800 @300 DPI).
 
 Strip/print sizing and responsibilities are defined in `docs/strip-vs-print-contract.md`.
+
+Photobooth v2 uses **driverless IPP Everywhere printing over Wi‑Fi**.
+
+### Why USB printing is unsupported
+
+USB printing on the Canon SELPHY CP1500 is intentionally not supported:
+
+- USB printer class drivers (`usblp`, `ipp-usb`) conflict on modern Linux
+- IPP‑over‑USB is unstable in AP‑mode deployments
+- Canon officially supports AirPrint / IPP Everywhere on this model
+- Wi‑Fi printing recovers cleanly after Pi or printer reboots
+
+For reliability and maintainability, all production printing uses Wi‑Fi IPP Everywhere.
 
 ---
 

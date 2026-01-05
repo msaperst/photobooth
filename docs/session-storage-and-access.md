@@ -29,7 +29,7 @@ Live preview images are never stored on disk.
 - A new **session directory** is created when a session starts.
 - All photos captured during that session are written to the `photos/` subdirectory.
 - The combined photo strip is saved as `strip.jpg` in the session root.
-- The print composite (when implemented) will be saved alongside the strip (e.g., `print.jpg`).
+- The print composite will be saved alongside the strip (e.g., `print.jpg`).
 - Both RAW and full resolution JPG images are preserved for future editing
 
 > **Note:** Directory listings at `/sessions/` may or may not be enabled depending on environment and Flask
