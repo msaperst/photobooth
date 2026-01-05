@@ -2,6 +2,7 @@
 
 This guide is for **event operators**. No technical knowledge is required.
 
+> When in doubt, wait 10–30 seconds after fixing something — most issues clear automatically.
 ---
 
 ## 1. Event Setup (5 Minutes)
@@ -12,7 +13,7 @@ This guide is for **event operators**. No technical knowledge is required.
     - **Raspberry Pi (using Pi rated power supply)**
     - **Printer**
     - **Camera**
-        - Plug the camera into the Raspberry Pi using a **USB cable (USB → Mini-B)**
+        - Plug the camera into the Raspberry Pi using only **USB cable (USB A → Mini-B)**
         - One end goes into the **bottom front port on the left side of the camera**
         - The other end goes into **any USB port on the Raspberry Pi**
 
@@ -59,10 +60,9 @@ Follow on‑screen instructions on the printer if shown.
 
 The printer **must** be connected to the **Photobooth** Wi‑Fi network.
 
-On the printer screen verify the Wi-Fi icon (ᯤ) is
-shown next to the SSID **Photobooth**
+On the printer screen, verify the Wi-Fi icon (ᯤ) is shown next to the SSID **Photobooth**.
 
-If it is not reconnect it to **Photobooth**
+If it is not, reconnect the printer to **Photobooth**:
 
 1. Open **Settings**
 2. Go to **Wi‑Fi Settings**
@@ -102,6 +102,7 @@ The screen turns **RED** only when action is required.
 2. Ensure red power light is on
 3. The green activity light should be blinking
 4. Restart the photobooth application (see #5 below)
+5. Error should clear within ~60 seconds
 
 ### 🔴 Printer Not Reachable
 
@@ -112,7 +113,7 @@ The screen turns **RED** only when action is required.
 1. Make sure printer is powered ON
 2. Confirm printer is connected to **Photobooth** Wi‑Fi (see instructions above)
 3. Wait 30 seconds
-4. Error should clear
+4. Error should clear within ~10–30 seconds
 
 Printing will resume automatically once reconnected.
 
@@ -128,7 +129,7 @@ The printer screen will usually show the problem. Common things to check:
 - Ink cartridge installed correctly
 - Tray fully inserted
 
-Once fixed, error should clear and printing should resume automatically.
+Once fixed, error should clear within ~10–30 seconds and printing should resume automatically.
 
 ### 🔴 Camera Error
 
@@ -140,7 +141,7 @@ Once fixed, error should clear and printing should resume automatically.
 2. Check the USB cable between camera and Raspberry Pi
 3. Reseat the cable on both ends
 4. Wait ~10 seconds
-5. Error should clear
+5. Error should clear within ~10–30 seconds
 
 The booth will recover automatically.
 
@@ -150,7 +151,7 @@ The booth will recover automatically.
 
 **Fix:**
 
-1. Follow error instructions
+1. Read and follow the error message on screen (no button press is required)
 2. Restart the photobooth application (see #5 below)
 3. Relaunch the UI on the iPad
 4. Resume operation
@@ -176,7 +177,8 @@ Important notes:
     - Plug it back in
 2. Wait ~1 minute for startup to complete
 
-This automatically restarts the photobooth application.
+This automatically restarts the photobooth application. This is a safe
+operation, and will **not** delete photos or break the system.
 
 ---
 
@@ -209,7 +211,8 @@ If needed, you may also refresh the page.
     - Wait 30 seconds
 3. If still stuck
     - Power cycle Raspberry Pi
-4. If issues still persist, contact technical support
+4. If issues still persist, do not continue restarting devices
+   repeatedly - stop and contact technical support
 
 ---
 
