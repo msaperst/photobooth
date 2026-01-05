@@ -279,6 +279,26 @@ class PhotoboothController:
         with self._health_lock:
             return self._health_status.level == HealthLevel.ERROR
 
+    def _print_worker(self):
+        try:
+            while True:
+                with self._print_lock:
+                    if not self._pending_prints:
+                        return
+                    path, count = self._pending_prints[0]
+
+                self.printer.preflight()
+                self.printer.print_file(path, copies=count, job_name="Photobooth Print")
+
+                with self._print_lock:
+                    self._pending_prints.pop(0)
+
+        except Exception as e:
+            self._set_printer_error(str(e), reasons=[])
+        finally:
+            with self._print_lock:
+                self._print_in_flight = False
+
     # will print stuff
     def _start_print_job(self, print_path: Path, *, copies: int) -> None:
         if copies < 1:
@@ -290,27 +310,7 @@ class PhotoboothController:
                 return
             self._print_in_flight = True
 
-        def _print_worker():
-            try:
-                while True:
-                    with self._print_lock:
-                        if not self._pending_prints:
-                            return
-                        path, count = self._pending_prints[0]
-
-                    self.printer.preflight()
-                    self.printer.print_file(path, copies=count, job_name="Photobooth Print")
-
-                    with self._print_lock:
-                        self._pending_prints.pop(0)
-
-            except Exception as e:
-                self._set_printer_error(str(e), reasons=[])
-            finally:
-                with self._print_lock:
-                    self._print_in_flight = False
-
-        threading.Thread(target=_print_worker, daemon=True).start()
+        threading.Thread(target=self._print_worker, daemon=True).start()
 
     def _kick_print_worker_if_needed(self) -> None:
         """
@@ -324,27 +324,7 @@ class PhotoboothController:
                 return
             self._print_in_flight = True
 
-        def _print_worker():
-            try:
-                while True:
-                    with self._print_lock:
-                        if not self._pending_prints:
-                            return
-                        path, count = self._pending_prints[0]
-
-                    self.printer.preflight()
-                    self.printer.print_file(path, copies=count, job_name="Photobooth Print")
-
-                    with self._print_lock:
-                        self._pending_prints.pop(0)
-
-            except Exception as e:
-                self._set_printer_error(str(e), reasons=[])
-            finally:
-                with self._print_lock:
-                    self._print_in_flight = False
-
-        threading.Thread(target=_print_worker, daemon=True).start()
+        threading.Thread(target=self._print_worker, daemon=True).start()
 
     # ---------- Health helpers ----------
 
