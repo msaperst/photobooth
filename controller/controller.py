@@ -278,6 +278,33 @@ class PhotoboothController:
         with self._health_lock:
             return self._health_status.level == HealthLevel.ERROR
 
+    def _maybe_start_print_worker(self) -> None:
+        """
+        Start the print worker thread if:
+          - there is pending work, and
+          - no worker is currently in flight.
+
+        This function is safe with tests that monkeypatch threading.Thread to run
+        synchronously because it never starts the worker while holding _print_lock.
+        """
+        should_start = False
+
+        with self._print_lock:
+            if self._print_in_flight:
+                return
+            if not self._pending_prints:
+                return
+            self._print_in_flight = True
+            should_start = True
+
+        try:
+            threading.Thread(target=self._print_worker, daemon=True).start()
+        except Exception as e:
+            # Roll back in-flight so we don't wedge the queue.
+            with self._print_lock:
+                self._print_in_flight = False
+            self._set_printer_error(str(e), reasons=[])
+
     def _print_worker(self):
         try:
             while True:
@@ -305,25 +332,11 @@ class PhotoboothController:
 
         with self._print_lock:
             self._pending_prints.append((print_path, copies))
-            if self._print_in_flight:
-                return
-            self._print_in_flight = True
 
-        threading.Thread(target=self._print_worker, daemon=True).start()
+        self._maybe_start_print_worker()
 
     def _kick_print_worker_if_needed(self) -> None:
-        """
-        If there are pending prints and no print worker in flight, start a worker
-        to drain the queue. This does not enqueue a new job.
-        """
-        with self._print_lock:
-            if self._print_in_flight:
-                return
-            if not self._pending_prints:
-                return
-            self._print_in_flight = True
-
-        threading.Thread(target=self._print_worker, daemon=True).start()
+        self._maybe_start_print_worker()
 
     # ---------- Health helpers ----------
 

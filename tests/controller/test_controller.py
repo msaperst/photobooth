@@ -1303,3 +1303,44 @@ def test_poll_printer_health_does_not_clear_camera_error(tmp_path, monkeypatch):
     assert health.level == HealthLevel.ERROR
     assert health.code == HealthCode.CAMERA_NOT_DETECTED
     assert controller._get_health_source() == HealthSource.CAPTURE
+
+
+def test_maybe_start_print_worker_thread_start_failure_rolls_back_in_flight_and_sets_error(tmp_path, monkeypatch):
+    camera = FakeCamera(tmp_path)
+
+    class NoOpPrinter(Printer):
+        def preflight(self) -> None:
+            return
+
+        def print_file(self, file_path: Path, *, copies: int = 1, job_name: str | None = None) -> None:
+            return
+
+    controller = PhotoboothController(camera=camera, printer=NoOpPrinter(), image_root=tmp_path)
+
+    # Seed pending work and ensure no worker in flight
+    with controller._print_lock:
+        controller._pending_prints.append((tmp_path / "a.jpg", 1))
+        controller._print_in_flight = False
+
+    class ExplodingThread:
+        def __init__(self, target, daemon):
+            self._target = target
+
+        def start(self):
+            raise RuntimeError("thread start failed")
+
+    monkeypatch.setattr(threading, "Thread", lambda *a, **k: ExplodingThread(k["target"], k["daemon"]))
+
+    controller._maybe_start_print_worker()
+
+    # Should not wedge: in-flight must be rolled back
+    with controller._print_lock:
+        assert controller._print_in_flight is False
+        assert len(controller._pending_prints) == 1  # job still pending
+
+    # Should surface operator-visible printer error
+    health = controller.get_health()
+    assert health.level == HealthLevel.ERROR
+    assert health.code == HealthCode.PRINTER_FAILED
+    assert controller._get_health_source() == HealthSource.PRINTER
+    assert "thread start failed" in (health.message or "")
