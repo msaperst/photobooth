@@ -149,9 +149,9 @@ def render_print_sheet(
     y0 = layout.text_top_y
 
     left_origin = (layout.strip_inner_padding, y0)
-    right_origin = (strip_w + layout.strip_inner_padding, y0)
+    right_origin = (strip_w + cut + layout.strip_inner_padding, y0)
 
-    qr_size = box_h  # use the full available height (192px)
+    qr_size = box_h  # use the full available height
 
     _draw_qr_and_text_in_box(
         sheet=sheet,
