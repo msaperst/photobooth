@@ -183,11 +183,10 @@ class SessionFlow:
         with self._controller._state_lock:
             self._controller.state = ControllerState.PRINTING
 
-        # TODO - add this back in once we're happy with what was generated
-        # self._controller._start_print_job(
-        #     storage.print_path,
-        #     copies=self._controller.print_count,
-        # )
+        self._controller._start_print_job(
+            storage.print_path,
+            copies=self._controller.print_count,
+        )
 
         # Return to IDLE immediately so the next guests can start.
         with self._controller._state_lock:
