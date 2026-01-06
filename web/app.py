@@ -72,7 +72,9 @@ def create_app(camera: Camera | None = None, printer: Printer | None = None, ima
         camera = GPhotoCamera()
 
     if printer is None:
-        printer = CupsPrinter(printer_name=DEFAULT_CUPS_PRINTER)
+        printer = CupsPrinter(
+            printer_name=DEFAULT_CUPS_PRINTER,
+        )
 
     controller = PhotoboothController(
         camera=camera,

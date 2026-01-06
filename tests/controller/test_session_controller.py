@@ -8,6 +8,20 @@ from tests.fakes.fake_camera import FakeCamera
 from tests.helpers import wait_for
 
 
+class FakeImage:
+    def __init__(self, size):
+        self.size = size  # (w, h)
+
+    def crop(self, box):
+        # box is (left, top, right, bottom)
+        left, top, right, bottom = box
+        return FakeImage((right - left, bottom - top))
+
+    def save(self, path, **kwargs):
+        # Default no-op; individual tests can override by subclassing
+        return
+
+
 def test_session_storage_creates_expected_paths(tmp_path):
     storage = SessionStorage(
         root=tmp_path,
@@ -32,22 +46,22 @@ def test_finish_session_saves_strip(tmp_path, monkeypatch):
 
     saved_paths = []
 
-    class FakeStrip:
-        def save(self, path):
+    class RecordingStrip(FakeImage):
+        def save(self, path, **kwargs):
             saved_paths.append(path)
 
-    class FakeSheet:
+    class RecordingSheet(FakeImage):
         def save(self, path, **kwargs):
             saved_paths.append(path)
 
     monkeypatch.setattr(
         "controller.session_flow.render_strip",
-        lambda *args, **kwargs: FakeStrip(),
+        lambda *args, **kwargs: RecordingStrip((590, 1568)),
     )
 
     monkeypatch.setattr(
         "controller.session_flow.render_print_sheet",
-        lambda *args, **kwargs: FakeSheet(),
+        lambda *args, **kwargs: RecordingSheet((1181, 1748)),
     )
 
     controller.start()
@@ -247,16 +261,8 @@ def test_finish_session_print_preflight_failure_sets_printer_health(tmp_path, mo
     controller.countdown_seconds = 0
     monkeypatch.setattr("time.sleep", lambda _: None)
 
-    # Make rendering fast / deterministic (optional). If your existing tests already do this,
-    # you can reuse those monkeypatches.
-    class FakeStrip:
-        def save(self, path): pass
-
-    class FakeSheet:
-        def save(self, path, **kwargs): pass
-
-    monkeypatch.setattr("controller.session_flow.render_strip", lambda *a, **k: FakeStrip())
-    monkeypatch.setattr("controller.session_flow.render_print_sheet", lambda *a, **k: FakeSheet())
+    monkeypatch.setattr("controller.session_flow.render_strip", lambda *a, **k: FakeImage((590, 1568)))
+    monkeypatch.setattr("controller.session_flow.render_print_sheet", lambda *a, **k: FakeImage((1181, 1748)))
 
     controller.start()
     controller.enqueue(Command(CommandType.START_SESSION, payload={"print_count": 2}))
@@ -291,14 +297,8 @@ def test_finish_session_print_failure_sets_printer_health(tmp_path, monkeypatch)
     controller.countdown_seconds = 0
     monkeypatch.setattr("time.sleep", lambda _: None)
 
-    class FakeStrip:
-        def save(self, path): pass
-
-    class FakeSheet:
-        def save(self, path, **kwargs): pass
-
-    monkeypatch.setattr("controller.session_flow.render_strip", lambda *a, **k: FakeStrip())
-    monkeypatch.setattr("controller.session_flow.render_print_sheet", lambda *a, **k: FakeSheet())
+    monkeypatch.setattr("controller.session_flow.render_strip", lambda *a, **k: FakeImage((590, 1568)))
+    monkeypatch.setattr("controller.session_flow.render_print_sheet", lambda *a, **k: FakeImage((1181, 1748)))
 
     controller.start()
     controller.enqueue(Command(CommandType.START_SESSION, payload={"print_count": 1}))
@@ -335,14 +335,8 @@ def test_finish_session_starts_print_job_with_correct_copies(tmp_path, monkeypat
     controller.countdown_seconds = 0
     monkeypatch.setattr("time.sleep", lambda _: None)
 
-    class FakeStrip:
-        def save(self, path): pass
-
-    class FakeSheet:
-        def save(self, path, **kwargs): pass
-
-    monkeypatch.setattr("controller.session_flow.render_strip", lambda *a, **k: FakeStrip())
-    monkeypatch.setattr("controller.session_flow.render_print_sheet", lambda *a, **k: FakeSheet())
+    monkeypatch.setattr("controller.session_flow.render_strip", lambda *a, **k: FakeImage((590, 1568)))
+    monkeypatch.setattr("controller.session_flow.render_print_sheet", lambda *a, **k: FakeImage((1181, 1748)))
 
     controller.start()
     controller.enqueue(Command(CommandType.START_SESSION, payload={"print_count": 3}))
@@ -390,15 +384,8 @@ def test_printer_recovery_clears_health_and_retries_pending_print(tmp_path, monk
     controller.countdown_seconds = 0
     monkeypatch.setattr("time.sleep", lambda _: None)
 
-    # Make rendering fast
-    class FakeStrip:
-        def save(self, path): pass
-
-    class FakeSheet:
-        def save(self, path, **kwargs): pass
-
-    monkeypatch.setattr("controller.session_flow.render_strip", lambda *a, **k: FakeStrip())
-    monkeypatch.setattr("controller.session_flow.render_print_sheet", lambda *a, **k: FakeSheet())
+    monkeypatch.setattr("controller.session_flow.render_strip", lambda *a, **k: FakeImage((590, 1568)))
+    monkeypatch.setattr("controller.session_flow.render_print_sheet", lambda *a, **k: FakeImage((1181, 1748)))
 
     controller.start()
     controller.enqueue(Command(CommandType.START_SESSION, payload={"print_count": 2}))

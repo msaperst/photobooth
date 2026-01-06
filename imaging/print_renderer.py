@@ -61,7 +61,7 @@ def _make_album_qr_code(*, album_code: str, size: int) -> Image.Image:
 
     qr = qrcode.QRCode(
         error_correction=qrcode.constants.ERROR_CORRECT_M,
-        border=1,
+        border=0,
     )
     qr.add_data(url)
     qr.make(fit=True)
@@ -130,8 +130,10 @@ def render_print_sheet(
     sheet = Image.new("RGB", (canvas_w, canvas_h), layout.background_color)
 
     strip_w, _strip_h = layout.strip_size
+    cut = layout.cut_line_size
+
     sheet.paste(strip, (0, 0))
-    sheet.paste(strip, (strip_w, 0))
+    sheet.paste(strip, (strip_w + cut, 0))
 
     # Prepare fonts
     draw = ImageDraw.Draw(sheet)
@@ -143,9 +145,9 @@ def render_print_sheet(
     y0 = layout.text_top_y
 
     left_origin = (layout.strip_inner_padding, y0)
-    right_origin = (strip_w + layout.strip_inner_padding, y0)
+    right_origin = (strip_w + cut + layout.strip_inner_padding, y0)
 
-    qr_size = box_h  # use the full available height (192px)
+    qr_size = box_h  # use the full available height
 
     _draw_qr_and_text_in_box(
         sheet=sheet,
