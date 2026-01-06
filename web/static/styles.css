@@ -180,6 +180,7 @@ body.health-error .health-overlay {
     width: 100%;
     height: auto;
     max-height: 560px;
+    padding: 30px 0;
     border-radius: 12px;
     background: #f0f0f0;
     object-fit: contain;
