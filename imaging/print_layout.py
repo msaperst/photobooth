@@ -26,3 +26,6 @@ class PrintLayout:
     font_size_info: int = 28
     font_size_link: int = 30
     line_spacing: int = 4
+
+    # any extra padding between strips
+    cut_line_size: int = 0

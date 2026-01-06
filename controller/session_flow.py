@@ -135,11 +135,11 @@ class SessionFlow:
             strip = render_strip(
                 image_paths=self._controller._captured_image_paths,
                 layout=StripLayout(
-                    photo_size=(576, 384),
-                    padding=12,
+                    photo_size=(558, 372),
+                    padding=16,
                     background_color=(255, 255, 255),
                     logo_path=self._controller.strip_logo_path,
-                    logo_size=(576, 384),
+                    logo_size=(558, 372),
                 ),
             )
             strip.save(storage.strip_path)
@@ -148,14 +148,15 @@ class SessionFlow:
             sheet = render_print_sheet(
                 strip=strip,
                 layout=PrintLayout(
-                    canvas_size=(1200, 1800),
+                    canvas_size=(1181, 1748),
                     dpi=300,
-                    strip_size=(600, 1596),
+                    strip_size=(590, 1568),
                     background_color=(255, 255, 255),
                     strip_inner_padding=12,
-                    text_box_size=(576, 192),
-                    text_top_y=1596,
+                    text_box_size=(558, 164),
+                    text_top_y=1568,
                     text_color=(0, 0, 0),
+                    cut_line_size=1
                 ),
                 album_code=self._controller.event_album_code,
             )
