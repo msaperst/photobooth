@@ -74,10 +74,6 @@ def create_app(camera: Camera | None = None, printer: Printer | None = None, ima
     if printer is None:
         printer = CupsPrinter(
             printer_name=DEFAULT_CUPS_PRINTER,
-            # extra_args=[
-            #     "-o", "media=om_postcard-borderless_100x148mm",
-            #     "-o", "print-scaling=none",
-            # ]
         )
 
     controller = PhotoboothController(
