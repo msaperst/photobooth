@@ -13,9 +13,6 @@ class PrintLayout:
     strip_size: Tuple[int, int]  # expected (width, height) of strip images
     background_color: Tuple[int, int, int]
 
-    # Strip-internal padding (used to align text with strip content)
-    strip_inner_padding: int  # e.g. 12
-
     # Print-only text region per strip (same size, drawn twice)
     text_box_size: Tuple[int, int]  # (width, height) -> (576, 192)
     text_top_y: int  # y coordinate where text region begins -> 1596
@@ -26,6 +23,9 @@ class PrintLayout:
     font_size_info: int = 28
     font_size_link: int = 30
     line_spacing: int = 4
+
+    # Strip-internal padding (used to align text with strip content)
+    strip_inner_padding: int = 0  # e.g. 12
 
     # any extra padding between strips
     cut_line_size: int = 0

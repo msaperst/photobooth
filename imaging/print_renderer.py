@@ -61,7 +61,7 @@ def _make_album_qr_code(*, album_code: str, size: int) -> Image.Image:
 
     qr = qrcode.QRCode(
         error_correction=qrcode.constants.ERROR_CORRECT_M,
-        border=1,
+        border=0,
     )
     qr.add_data(url)
     qr.make(fit=True)
