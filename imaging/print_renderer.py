@@ -132,10 +132,6 @@ def render_print_sheet(
     strip_w, _strip_h = layout.strip_size
     cut = layout.cut_line_size
 
-    expected_w = strip_w * 2 + cut
-    if canvas_w != expected_w:
-        raise ValueError(f"canvas width {canvas_w} != expected {expected_w} (2*strip_w + cut)")
-
     sheet.paste(strip, (0, 0))
     sheet.paste(strip, (strip_w + cut, 0))
 

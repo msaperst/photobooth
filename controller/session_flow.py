@@ -143,20 +143,21 @@ class SessionFlow:
                 ),
             )
             strip.save(storage.strip_path)
+            strip_to_print = strip.crop((16, 16, 590 - 16, 1568 - 16))  # -> 558x1536
 
             # --- Print asset generation (printer-optimized) ---
             sheet = render_print_sheet(
-                strip=strip,
+                strip=strip_to_print,
                 layout=PrintLayout(
                     canvas_size=(1181, 1748),
                     dpi=300,
-                    strip_size=(590, 1568),
+                    strip_size=(558, 1536),
                     background_color=(255, 255, 255),
-                    strip_inner_padding=12,
-                    text_box_size=(558, 164),
-                    text_top_y=1568,
+                    strip_inner_padding=0,
+                    text_box_size=(558, 196),
+                    text_top_y=1552,
                     text_color=(0, 0, 0),
-                    cut_line_size=1
+                    cut_line_size=65
                 ),
                 album_code=self._controller.event_album_code,
             )
@@ -182,10 +183,11 @@ class SessionFlow:
         with self._controller._state_lock:
             self._controller.state = ControllerState.PRINTING
 
-        self._controller._start_print_job(
-            storage.print_path,
-            copies=self._controller.print_count,
-        )
+        # TODO - add this back in once we're happy with what was generated
+        # self._controller._start_print_job(
+        #     storage.print_path,
+        #     copies=self._controller.print_count,
+        # )
 
         # Return to IDLE immediately so the next guests can start.
         with self._controller._state_lock:
