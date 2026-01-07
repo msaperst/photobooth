@@ -87,6 +87,21 @@ If it is not, reconnect the printer to **Photobooth**:
 No action is needed between guests.
 > _Note_: Printing may start a few seconds after the last photo.
 
+> ⚠️ **Important – Printer Handling**
+>
+> The printer uses a multi-pass printing process (it will pull the photo in and out several times).
+> 
+> **Do NOT let guests touch or pull the print until the printer is completely finished and releases it on its own.**
+> 
+> Pulling the print early will ruin the photo and may damage the printer.
+
+### Finished Prints
+
+Each print comes out as **one sheet containing two strips**.
+
+- The operator should **cut the print in half** using a paper cutter or scissors.
+- Do this **only after the printer is completely finished** and releases the print.
+  
 ---
 
 ## 4. Red Screen of Death (RSoD)
@@ -200,6 +215,7 @@ If needed, you may also refresh the page.
 - Do **not** plug printer into Raspberry Pi (printer is Wi‑Fi)
 - Do **not** change Wi‑Fi on iPad
 - Do **not** load paper matte‑side up
+- Do **not** allow guests to touch or pull prints while the printer is printing
 
 ---
 
