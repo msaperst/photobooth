@@ -97,12 +97,24 @@ photobooth**.
 The photobooth runs its own local Wi-Fi network (**no internet required**). Some phones need a small extra step — this
 is normal.
 
-Guests need to connect to this Wi-Fi network (**Photobooth**) in order to download the photo strip
+Guests must connect to the **Photobooth** Wi-Fi network in order to download the photo strip.
 
-If the line is long, you are busy, or the next group is ready, you not need to do this step. Inform the guests that
-there is a QR code on the printed strip that they can scan, and the photos will be uploaded to that site in a day or so.
-If they get to the site and there are no photos available, they can even enter their email address and get automatically
-messaged when the photos are uploaded.
+---
+
+### When You Can Skip This Step
+
+If the line is long, you are busy, or the next group is ready, you **do not** need to walk guests through this process.
+
+In that case, tell guests:
+
+- There is a **QR code printed on the photo strip**
+- They can scan it later to access their photos
+- Photos will be uploaded to that site within a day or so
+
+If guests visit the site and do not see their photos yet:
+
+- They can enter their email address
+- They will be automatically notified when the photos are uploaded
 
 ---
 
@@ -166,7 +178,7 @@ If prompted, tap **Keep Using Wi-Fi** or **Continue Without Internet**.
 
 ### Download Warning About the File Name (Important)
 
-Guests may see a warning that the file has already been downloaded, such as:
+Guests may see a warning such as:
 
 - “This file already exists”
 - “Do you want to download again?”
@@ -175,8 +187,8 @@ This is **expected and safe**.
 
 #### Why this happens
 
-- All photo strips use the **same filename** (this is by design)
-- If a guest has already downloaded a strip earlier, their phone may ask for confirmation
+- All photo strips intentionally use the **same filename**
+- If a guest has downloaded a strip before, their phone may ask for confirmation
 
 #### What to tell guests
 
@@ -184,7 +196,7 @@ This is **expected and safe**.
 
 #### What phones do with the file
 
-- **Android:** Automatically keeps both files (e.g. `photostrip.jpg`, `photostrip (1).jpg`)
+- **Android:** Keeps both files (e.g. `photostrip.jpg`, `photostrip (1).jpg`)
 - **iPhone:** Also keeps both files; it will not overwrite the previous photo
 
 No photos will be lost or replaced.
@@ -202,7 +214,8 @@ Have the guest try one of the following:
 If needed:
 
 - Ask them to move slightly closer to the booth
-- Confirm they are still connected to **Photobooth** Wi-Fi (phones may switch back to cellular automatically)
+- Confirm they are still connected to **Photobooth** Wi-Fi  
+  (phones may automatically switch back to cellular)
 
 ---
 
@@ -229,10 +242,10 @@ Use this short explanation with guests:
 ### Notes for Operators
 
 - These warnings are expected and **not errors**
-- The photobooth is working correctly even when phones warn about no internet or duplicate downloads
+- The photobooth is operating correctly even when phones warn about no internet or duplicate downloads
 - Most issues are resolved by reconnecting to **Photobooth** Wi-Fi and rescanning the QR code
-- Remember, not being able to download the photos doesn't mean they can't get them later. The printed photo strip has a
-  QR code they can use to retrieve the images later
+- Not being able to download photos immediately does **not** mean they are lost  
+  The printed photo strip includes a QR code guests can use later to retrieve their images
 
 ---
 
