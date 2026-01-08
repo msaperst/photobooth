@@ -72,16 +72,18 @@ Charge to 100% where possible.
 - Power cable for Pi
 - Printer
 - Printer power cable
+- Extra printer paper
+- Extra printer ink
 - Camera
 - Camera USB cable
 - Camera batteries + charger
 - iPad
 - iPad charger
+- Extension cord
+- Power strip
 
 ### Strongly Recommended
 
-- Extension cord
-- Power strip
 - Gaffer tape
 - Small screwdriver
 - Lens cloth
