@@ -89,6 +89,153 @@ No action is needed between guests.
 
 ---
 
+## 4. Guest Photo Download
+
+After a photo strip prints, guests can scan the QR code on the screen to download their digital copy **directly from the
+photobooth**.
+
+The photobooth runs its own local Wi-Fi network (**no internet required**). Some phones need a small extra step — this
+is normal.
+
+Guests need to connect to this Wi-Fi network (**Photobooth**) in order to download the photo strip
+
+If the line is long, you are busy, or the next group is ready, you not need to do this step. Inform the guests that
+there is a QR code on the printed strip that they can scan, and the photos will be uploaded to that site in a day or so.
+If they get to the site and there are no photos available, they can even enter their email address and get automatically
+messaged when the photos are uploaded.
+
+---
+
+### If a Guest Scans the QR Code and Sees “Page Could Not Load”
+
+This is the most common situation.
+
+#### What to tell the guest
+
+> “You just need to connect to the **Photobooth Wi-Fi** first — it doesn’t use the internet.”
+
+#### Simple steps
+
+1. Open **Wi-Fi settings**
+2. Connect to **Photobooth**
+3. Go back to the camera or browser
+4. **Scan the QR code again**
+
+---
+
+### Android Phones (Important)
+
+Many Android phones warn that the Photobooth Wi-Fi has no internet.
+
+This is **expected behavior**.
+
+#### What to tell Android guests
+
+> “When it says there’s no internet, tap **Connect anyway** — the photos are stored on the booth.”
+
+#### Typical Android flow
+
+1. Connect to **Photobooth** Wi-Fi
+2. Phone shows a warning such as:
+    - “No internet”
+    - “Connected without internet”
+    - “This network may not work”
+3. Tap **Connect anyway**, **Stay connected**, or **Yes**
+4. Scan the QR code again
+
+The download should open immediately.
+
+---
+
+### iPhone Behavior (What to Expect)
+
+On iPhones:
+
+- You may see **“No Internet Connection”**
+- The Wi-Fi icon may show a warning symbol
+
+This is normal.
+
+#### What to tell iPhone guests
+
+> “That’s expected — just stay connected to Photobooth and scan again.”
+
+If prompted, tap **Keep Using Wi-Fi** or **Continue Without Internet**.
+
+---
+
+### Download Warning About the File Name (Important)
+
+Guests may see a warning that the file has already been downloaded, such as:
+
+- “This file already exists”
+- “Do you want to download again?”
+
+This is **expected and safe**.
+
+#### Why this happens
+
+- All photo strips use the **same filename** (this is by design)
+- If a guest has already downloaded a strip earlier, their phone may ask for confirmation
+
+#### What to tell guests
+
+> “That’s fine — just tap **Yes** or **Download again**.”
+
+#### What phones do with the file
+
+- **Android:** Automatically keeps both files (e.g. `photostrip.jpg`, `photostrip (1).jpg`)
+- **iPhone:** Also keeps both files; it will not overwrite the previous photo
+
+No photos will be lost or replaced.
+
+---
+
+### If the Download Still Doesn’t Open
+
+Have the guest try one of the following:
+
+- Scan the QR code again
+- Refresh the page
+- Open a browser (Safari / Chrome) and rescan
+
+If needed:
+
+- Ask them to move slightly closer to the booth
+- Confirm they are still connected to **Photobooth** Wi-Fi (phones may switch back to cellular automatically)
+
+---
+
+### Operator Quick Script (Recommended)
+
+Use this short explanation with guests:
+
+> “The QR works over the Photobooth Wi-Fi — not the internet.  
+> If it doesn’t load, connect to **Photobooth Wi-Fi**, tap **Connect anyway**, then scan again.  
+> If it asks to download again, just say yes — it won’t overwrite anything.”
+
+---
+
+### Things Guests Do *Not* Need
+
+- No password
+- No app install
+- No account
+- No internet access
+- No data usage
+
+---
+
+### Notes for Operators
+
+- These warnings are expected and **not errors**
+- The photobooth is working correctly even when phones warn about no internet or duplicate downloads
+- Most issues are resolved by reconnecting to **Photobooth** Wi-Fi and rescanning the QR code
+- Remember, not being able to download the photos doesn't mean they can't get them later. The printed photo strip has a
+  QR code they can use to retrieve the images later
+
+---
+
 ## 4. Red Screen of Death (RSoD)
 
 The screen turns **RED** only when action is required.
