@@ -295,3 +295,57 @@ def test_download_most_recent_strip_404_when_storage_present_but_file_missing(cl
     assert r.status_code == 404
     payload = r.get_json()
     assert payload == {"ok": False, "error": "no_strip"}
+
+
+def test_qr_most_recent_strip_encodes_cache_busted_download_url(client, monkeypatch):
+    """
+    Ensure the QR PNG encodes a unique URL each time (cache-bust inside QR payload),
+    not just a cache-busted QR PNG image request.
+    """
+    import qrcode
+    from urllib.parse import urlparse, parse_qs
+
+    import web.app as web_app
+
+    captured = []
+
+    original_add_data = qrcode.QRCode.add_data
+
+    def spy_add_data(self, data, *args, **kwargs):
+        captured.append(data)
+        return original_add_data(self, data, *args, **kwargs)
+
+    monkeypatch.setattr(qrcode.QRCode, "add_data", spy_add_data)
+
+    # If the implementation uses time.time(), patch it in a way that cannot exhaust.
+    # NOTE: web_app.time is the shared stdlib time module, so this also affects Werkzeug's Date header.
+    # Therefore this must be safe for "many calls".
+    if hasattr(web_app, "time"):
+        base = 1_700_000_000.0
+        counter = {"n": 0}
+
+        def fake_time():
+            counter["n"] += 1
+            # Always increasing, never exhausts.
+            return base + (counter["n"] * 0.001)
+
+        monkeypatch.setattr(web_app.time, "time", fake_time)
+
+    r1 = client.get("/qr/most-recent-strip.png")
+    assert r1.status_code == 200
+
+    r2 = client.get("/qr/most-recent-strip.png")
+    assert r2.status_code == 200
+
+    assert len(captured) == 2
+
+    for url in captured:
+        parsed = urlparse(url)
+        assert parsed.path.endswith("/download/most-recent-strip")
+        qs = parse_qs(parsed.query)
+        assert "v" in qs, f"expected cache-busting query param 'v' in QR payload url: {url}"
+        assert len(qs["v"]) == 1
+        assert qs["v"][0]  # non-empty
+
+    # The encoded URL should differ between calls (fresh v=...)
+    assert captured[0] != captured[1]

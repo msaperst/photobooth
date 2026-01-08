@@ -3,7 +3,9 @@ Flask application for photobooth UI and API.
 """
 import io
 import os
+import time
 from pathlib import Path
+from urllib.parse import urlencode
 
 import qrcode
 from PIL import Image
@@ -176,7 +178,9 @@ def create_app(camera: Camera | None = None, printer: Printer | None = None, ima
     @app.route("/qr/most-recent-strip.png", methods=["GET"])
     def qr_most_recent_strip():
         # QR points to a download endpoint so the phone downloads directly.
-        url = request.host_url.rstrip("/") + "/download/most-recent-strip"
+        v = int(time.time() * 1000)  # ms
+        qs = urlencode({"v": v})
+        url = request.host_url.rstrip("/") + f"/download/most-recent-strip?{qs}"
 
         qr = qrcode.QRCode(
             error_correction=qrcode.constants.ERROR_CORRECT_M,
