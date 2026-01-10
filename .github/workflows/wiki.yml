@@ -41,12 +41,12 @@ jobs:
           set -euo pipefail
           cd wiki
 
-          cat "# Photobooth Runbooks" > Home.md
-          cat "" >> Home.md
-          cat "This wiki is auto-published from the main repository (`runbooks/`)." >> Home.md
-          cat "It contains operator-facing and technical runbooks for event operation." >> Home.md
-          cat "" >> Home.md
-          cat "## 📋 Table of Contents" >> Home.md
+          echo "# Photobooth Runbooks" > Home.md
+          echo "" >> Home.md
+          echo "This wiki is auto-published from the main repository (`runbooks/`)." >> Home.md
+          echo "It contains operator-facing and technical runbooks for event operation." >> Home.md
+          echo "" >> Home.md
+          echo "## 📋 Table of Contents" >> Home.md
 
           # Generate TOC dynamically from markdown filenames
           find . -maxdepth 1 -type f -name "*.md" ! -name "Home.md" \
