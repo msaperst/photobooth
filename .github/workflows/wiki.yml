@@ -8,7 +8,7 @@ on:
       - ".github/workflows/wiki.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: publish-wiki
@@ -31,7 +31,6 @@ jobs:
       - name: Sync runbooks into wiki
         run: |
           set -euo pipefail
-          # Mirror runbooks/ into the root of the wiki
           rsync -av --delete \
             --exclude ".git" \
             runbooks/ \
@@ -40,28 +39,28 @@ jobs:
       - name: Generate Home.md TOC
         run: |
           set -euo pipefail
-
           cd wiki
 
-          # Build Home.md with a TOC of all markdown files except Home.md itself
-          {
-            echo "# Runbooks"
-            echo
-            echo "This wiki is auto-published from the main repository (\`runbooks/\`)."
-            echo
-            echo "## Table of Contents"
-            echo
-          } > Home.md
+          cat "# Photobooth Runbooks" > Home.md
+          cat "" >> Home.md
+          cat "This wiki is auto-published from the main repository (`runbooks/`)." >> Home.md
+          cat "It contains operator-facing and technical runbooks for event operation." >> Home.md
+          cat "" >> Home.md
+          cat "## 📋 Table of Contents" >> Home.md
 
-          # Find markdown pages (excluding Home.md), sort, and create wiki links
-          # Wiki links should use the page name without .md, spaces allowed, but GitHub wikis commonly use '-' in filenames.
-          while IFS= read -r file; do
-            base="$(basename "$file")"
-            page="${base%.md}"
-            # Display name: use the page name as-is; if you prefer prettier titles, you can convert '-' to spaces.
-            title="$page"
-            echo "- [[${title}|${page}]]" >> Home.md
-          done < <(find . -maxdepth 1 -type f -name "*.md" ! -name "Home.md" -printf "%f\n" | sort)
+          # Generate TOC dynamically from markdown filenames
+          find . -maxdepth 1 -type f -name "*.md" ! -name "Home.md" \
+            -printf "%f\n" | sort | while read -r file; do
+              page="${file%.md}"
+
+              # Convert filename -> title:
+              # photobooth_operator_runbook -> Photobooth Operator Runbook
+              title="$(echo "$page" \
+                | tr '_' ' ' \
+                | sed -E 's/^photobooth //i; s/\b([a-z])/\U\1/g')"
+
+              echo "- [[${title}|${page}]]" >> Home.md
+          done
 
       - name: Commit and push if changed
         run: |
@@ -69,7 +68,7 @@ jobs:
           cd wiki
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-
+          
           if git status --porcelain | grep -q .; then
             git add -A
             git commit -m "Sync runbooks from main repo (${GITHUB_SHA::7})"
