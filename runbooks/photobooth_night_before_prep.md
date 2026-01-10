@@ -12,6 +12,8 @@ Do these **before leaving home**.
 - Create album for event with **album code**
 - Update **album code** for the event (in `/etc/photobooth.env`)
 - Update **event logo / strip logo** (in `/etc/photobooth.env`)
+    - Ensure the file is owned by **photobooth**
+    - Ensure permissions are read by everyone
     - Confirm logo renders correctly on a test strip
 - Restart photobooth service
     - Confirm UI loads at `http://192.168.4.1:5000`
