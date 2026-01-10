@@ -76,6 +76,7 @@ Charge to 100% where possible.
 - Printer power cable
 - Extra printer paper
 - Extra printer ink
+- Paper cutter or scissors
 - Camera
 - Camera USB cable
 - Camera batteries + charger
