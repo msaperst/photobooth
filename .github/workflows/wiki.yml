@@ -1,0 +1,79 @@
+name: Publish runbooks to GitHub Wiki
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - "runbooks/**"
+      - ".github/workflows/wiki.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-wiki
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Checkout wiki repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}.wiki
+          path: wiki
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sync runbooks into wiki
+        run: |
+          set -euo pipefail
+          # Mirror runbooks/ into the root of the wiki
+          rsync -av --delete \
+            --exclude ".git" \
+            runbooks/ \
+            wiki/
+
+      - name: Generate Home.md TOC
+        run: |
+          set -euo pipefail
+
+          cd wiki
+
+          # Build Home.md with a TOC of all markdown files except Home.md itself
+          {
+            echo "# Runbooks"
+            echo
+            echo "This wiki is auto-published from the main repository (\`runbooks/\`)."
+            echo
+            echo "## Table of Contents"
+            echo
+          } > Home.md
+
+          # Find markdown pages (excluding Home.md), sort, and create wiki links
+          # Wiki links should use the page name without .md, spaces allowed, but GitHub wikis commonly use '-' in filenames.
+          while IFS= read -r file; do
+            base="$(basename "$file")"
+            page="${base%.md}"
+            # Display name: use the page name as-is; if you prefer prettier titles, you can convert '-' to spaces.
+            title="$page"
+            echo "- [[${title}|${page}]]" >> Home.md
+          done < <(find . -maxdepth 1 -type f -name "*.md" ! -name "Home.md" -printf "%f\n" | sort)
+
+      - name: Commit and push if changed
+        run: |
+          set -euo pipefail
+          cd wiki
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          if git status --porcelain | grep -q .; then
+            git add -A
+            git commit -m "Sync runbooks from main repo (${GITHUB_SHA::7})"
+            git push
+          else
+            echo "No wiki changes to publish."
+          fi
