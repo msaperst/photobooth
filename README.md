@@ -476,3 +476,35 @@ sudo ./deployment/scripts/step2_deploy_app.sh
 ### Accessing Photos
 
 See: [session-storage-and-access.md](docs/session-storage-and-access.md)
+
+## After-action: Rebuild strips from edited photos
+
+This workflow rebuilds photobooth strips after an event, using edited exports (e.g., from Lightroom).
+It uses the same strip layout code as the booth, so layout changes only need to be made in one place.
+
+### Requirements
+
+- Edited photos exported as raster images into a single folder:
+    - Supported: `.jpg`, `.jpeg`, `.png`, `.tif`, `.tiff`
+    - Not supported directly: `.nef` (export from Lightroom first)
+- A logo image file (same logo used by the booth)
+
+### Command
+
+```bash
+python3 -m tools.rebuild_strips /path/to/edited_exports --logo /path/to/logo.png
+```
+
+### Output
+
+- Writes `stripN.jpg` files into the same folder as the edited exports.
+- Images are grouped in filename order, 3 at a time.
+- Script will fail if the number of images is not divisible by 3.
+
+### Single source of truth for strip layout
+
+Strip layout values live in:
+
+- `imaging/layout_presets.py`
+
+Both the booth and this script should use `default_strip_layout(...)` so layout changes remain centralized.

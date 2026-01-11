@@ -6,10 +6,9 @@ from typing import TYPE_CHECKING
 
 from controller.health import HealthCode, HealthSource
 from controller.session_storage import SessionStorage
-from imaging.print_layout import PrintLayout
+from imaging.layout_presets import default_strip_layout, default_print_layout
 from imaging.print_renderer import render_print_sheet
 from imaging.strip_errors import StripCreationError
-from imaging.strip_layout import StripLayout
 from imaging.strip_renderer import render_strip
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -134,13 +133,7 @@ class SessionFlow:
             # --- Strip creation (canonical) ---
             strip = render_strip(
                 image_paths=self._controller._captured_image_paths,
-                layout=StripLayout(
-                    photo_size=(558, 372),
-                    padding=16,
-                    background_color=(255, 255, 255),
-                    logo_path=self._controller.strip_logo_path,
-                    logo_size=(558, 372),
-                ),
+                layout=default_strip_layout(logo_path=self._controller.strip_logo_path),
             )
             strip.save(storage.strip_path)
             strip_to_print = strip.crop((16, 16, 590 - 16, 1568 - 16))  # -> 558x1536
@@ -148,17 +141,7 @@ class SessionFlow:
             # --- Print asset generation (printer-optimized) ---
             sheet = render_print_sheet(
                 strip=strip_to_print,
-                layout=PrintLayout(
-                    canvas_size=(1181, 1748),
-                    dpi=300,
-                    strip_size=(558, 1536),
-                    background_color=(255, 255, 255),
-                    strip_inner_padding=0,
-                    text_box_size=(558, 196),
-                    text_top_y=1552,
-                    text_color=(0, 0, 0),
-                    cut_line_size=65
-                ),
+                layout=default_print_layout(),
                 album_code=self._controller.event_album_code,
             )
             sheet.save(storage.print_path, dpi=(300, 300))
